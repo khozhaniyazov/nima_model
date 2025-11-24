@@ -1,0 +1,6 @@
+flask
+openai
+manim
+python-dotenv
+psycopg2-binary
+

@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <title>Manim AI Generator</title>
+</head>
+<body>
+<h1>Enter your animation prompt:</h1>
+<form method="post">
+  <textarea name="prompt" rows="5" cols="60"></textarea><br><br>
+  <input type="submit" value="Generate Video">
+</form>
+
+{% if video_file %}
+  <h2>Generated Video:</h2>
+  <video width="480" controls>
+    <source src="{{ url_for('download_file', filename=video_file) }}" type="video/mp4">
+  </video>
+  <p>If the video is not ready yet, refresh this page in a few seconds.</p>
+{% endif %}
+</body>
+</html>
