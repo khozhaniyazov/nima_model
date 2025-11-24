@@ -18,21 +18,22 @@ NIMA is a Flask-based system that generates Manim CE animations from natural-lan
 
 project/
 │
-├── app.py                     Flask server
-├── algorithms/                Core logic
-│   ├── request_utils.py       Prompt analysis and planning
-│   ├── generation.py          Code generation and refinement
-│   ├── validation.py          Syntax and quality checks
-│   └── ...
+├── app.py                     # Flask server
+├── algorithms/                # Core logic
+│   ├── request_utils.py       # Prompt analysis and planning
+│   ├── generation.py          # Code generation and refinement
+│   ├── validation.py          # Syntax and quality checks
+│   └── ...                    # Other algorithm helpers
 │
 ├── database/
-│   ├── database.py            Database connection and helpers 
+│   ├── database.py            # Database connection and helpers
+│   └── schema.sql             # PostgreSQL schema
 │
-├── static/                    Front-end assets
-├── templates/                 HTML templates
-├── outputs/                   Generated videos, logs, and code
-├── README.md
-└── ...
+├── static/                    # Front-end assets (CSS, JS)
+├── templates/                 # HTML templates for Flask
+├── outputs/                   # Generated videos, logs, and code
+└── README.md                  # Project documentation
+
 
 ## Requirements
 
