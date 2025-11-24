@@ -86,3 +86,8 @@ http://127.0.0.1:5000
 
 - Requires Manim CE installed locally.  
 - Development server only; use a proper WSGI server for production.
+
+
+**Example:**
+
+![Central limit theorem](/example.gif)
