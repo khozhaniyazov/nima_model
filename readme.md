@@ -91,5 +91,3 @@ http://127.0.0.1:5000
 **Example:**
 
 ![Narrated demonstration](./example.mp4)
-
-[Watch the narrated demonstration video](./example.mp4)
