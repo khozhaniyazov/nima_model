@@ -90,4 +90,4 @@ http://127.0.0.1:5000
 
 **Example:**
 
-![Central limit theorem](/example.gif)
+<video src="example.mp4" controls width="100%"></video>
