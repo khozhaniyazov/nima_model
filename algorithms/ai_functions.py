@@ -55,20 +55,64 @@ def safe_zone_title(text, font_size=40):
     '''Create a persistent title in the top zone.'''
     return Text(text, font_size=font_size).to_edge(UP, buff=0.3)
 
-def start_section(scene, title_text=None, font_size=36):
-    '''Begin a new section: fade out all current objects, optionally show a title.
-    Returns (title_mob_or_None, section_group) — add all new objects to section_group.'''
-    if scene.mobjects:
+class _Section:
+    '''A small helper that TRACKS what gets introduced in a section.
+
+    Use:
+      sec = start_section(self, "Title")
+      sec.add(m1, m2)
+      sec.play(Write(m1))
+      sec.end()
+
+    Anything you add or animate via sec.play(...) will be cleaned up on sec.end().
+    '''
+
+    def __init__(self, scene, title_mob=None):
+        self.scene = scene
+        self.title_mob = title_mob
+        self.group = VGroup()
+
+    def add(self, *mobs):
+        self.group.add(*mobs)
+        return self
+
+    def play(self, *anims, **kwargs):
+        # Best-effort: collect mobjects introduced by animations.
+        for a in anims:
+            try:
+                mob = getattr(a, "mobject", None)
+                if mob is not None:
+                    self.group.add(mob)
+            except Exception:
+                pass
+        return self.scene.play(*anims, **kwargs)
+
+    def end(self, keep_title=False):
+        to_remove = [self.group]
+        if self.title_mob is not None and not keep_title:
+            to_remove.append(self.title_mob)
+        self.scene.play(FadeOut(*to_remove))
+
+
+def start_section(scene, title_text=None, font_size=36, clear=True):
+    '''Begin a new section.
+
+    - If clear=True: fades out ALL current objects.
+    - Optionally shows a title.
+
+    Returns a Section object that tracks new mobjects and guarantees cleanup.
+    '''
+    if clear and scene.mobjects:
         scene.play(FadeOut(*scene.mobjects))
-    section_group = VGroup()
     title_mob = None
     if title_text:
         title_mob = Text(title_text, font_size=font_size, color=BLUE).to_edge(UP, buff=0.3)
         scene.play(Write(title_mob))
-    return title_mob, section_group
+    return _Section(scene, title_mob=title_mob)
+
 
 def end_section(scene, section_group, title_mob=None):
-    '''Clean up a section: fade out the section_group (and title if given).'''
+    '''Backwards-compatible cleanup for older code paths.'''
     to_remove = [section_group]
     if title_mob is not None:
         to_remove.append(title_mob)
@@ -465,10 +509,11 @@ RULE 6 — LAYOUT: Ensure no two objects occupy the same screen region.
   - Visuals: center area, use VGroup.arrange() for spacing
   - Before each new section: FadeOut everything from the previous section
   - You MUST use the injected section helpers for any multi-step explanation:
-      title, section = start_section(self, "Section Title")
-      section.add(obj1, obj2, ...)
+      sec = start_section(self, "Section Title")
+      sec.add(obj1, obj2, ...)
+      sec.play(Write(obj1))
       ...
-      end_section(self, section, title)
+      sec.end()
     (This prevents objects lingering for the whole video.)
   - NEVER place two different objects at the same coordinates without FadeOut between them
   - When using .copy(), ALWAYS FadeOut or remove the original before showing the copy
