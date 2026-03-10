@@ -29,6 +29,8 @@ def _llm_text(prompt_messages, model: str) -> str:
     response = client.chat.completions.create(model=model, messages=prompt_messages)
     return response.choices[0].message.content
 
+
+def analyze_request_type(prompt: str) -> dict:
     """Classify the prompt and extract metadata needed to drive generation."""
     print("[ANALYZE] Analyzing request type...")
 
