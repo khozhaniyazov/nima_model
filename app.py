@@ -62,6 +62,7 @@ from algorithms.ai_functions import (
 )
 from algorithms.plan.compiler import compile_plan
 from algorithms.plan.schema import validate_plan_dict
+from algorithms.template_registry import choose_template
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -283,13 +284,16 @@ def generate_and_validate_code(
     if use_plan_compiler:
         try:
             render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
-            plan_json = create_plan_json(prompt, analysis)
+            template_name = choose_template(prompt, analysis.get("domain"))
+            if template_name:
+                print(f"[{job_id}] [PLAN] Using template: {template_name}")
+            plan_json = create_plan_json(prompt, analysis, template_name=template_name)
             plan_data = json.loads(plan_json)
             issues = validate_plan_dict(plan_data)
             if issues:
                 raise ValueError("; ".join(issues))
             plan_compiled_code = compile_plan(plan_data)
-            attempts_log.append({"stage": "plan_json", "success": True})
+            attempts_log.append({"stage": "plan_json", "success": True, "template": template_name})
         except Exception as e:
             print(f"[{job_id}] [PLAN] [ERR] Plan compiler fallback: {e}")
             plan_compiled_code = None

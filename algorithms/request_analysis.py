@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import OPENAI_API_KEY, GENERATION_MODEL, FAST_MODEL
+from algorithms.template_registry import TEMPLATES
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -168,37 +169,49 @@ Return ONLY the storyboard text.
         return "No detailed plan — create a clear educational animation covering the topic step by step."
 
 
-def create_plan_json(prompt: str, analysis: dict) -> str:
+def create_plan_json(prompt: str, analysis: dict, template_name: str = None) -> str:
     """Generate a plan-first JSON (v1) for deterministic compilation.
 
+    If template_name is provided, the model must follow that template's slots.
     Returns a JSON string compatible with algorithms/plan/schema.py.
     """
     print("[PLAN] Creating plan JSON (v1)...")
 
-    system_msg = """\
+    template_block = ""
+    if template_name and template_name in TEMPLATES:
+        t = TEMPLATES[template_name]
+        template_block = (
+            f"\nTEMPLATE SELECTED: {template_name}\n"
+            f"Slots: {', '.join(t['slots'])}\n"
+            f"Beats: {t['beats']}\n"
+            f"Notes: {t['notes']}\n"
+        )
+
+    system_msg = f"""\
 You generate plan-first JSON for Manim (schema v1). Output ONLY JSON.
 
 Schema keys:
 - version: "v1"
-- meta: {"name": string}
+- meta: {{"name": string, "template"?: string}}
 - objects: list of object specs
 - beats: list of beat actions
 
 Object spec:
-  {"id": str, "kind": one of [Text, MathTex, VGroup, NumberPlane, Axes, Dot, Line, Arrow, Rectangle, Circle, Square, Polygon],
+  {{"id": str, "kind": one of [Text, MathTex, VGroup, NumberPlane, Axes, Dot, Line, Arrow, Rectangle, Circle, Square, Polygon],
    "zone": one of [top, center, bottom, full],
-   "style": {"color"?: "BLUE"|"YELLOW"|..., "font_size"?: int, "stroke_width"?: float, "stroke_opacity"?: float, "fill_opacity"?: float},
-   "params": {"text"?: str, "tex"?: str}}
+   "style": {{"color"?: "BLUE"|"YELLOW"|..., "font_size"?: int, "stroke_width"?: float, "stroke_opacity"?: float, "fill_opacity"?: float}},
+   "params": {{"text"?: str, "tex"?: str}}}}
 
 Beat action:
-  {"op": "create"|"write"|"fade_in"|"fade_out"|"transform"|"move_to"|"arrange"|"set_color"|"wait",
-   "target"?: object id, "source"?: object id, "run_time"?: float, "wait"?: float}
+  {{"op": "create"|"write"|"fade_in"|"fade_out"|"transform"|"move_to"|"arrange"|"set_color"|"wait",
+   "target"?: object id, "source"?: object id, "run_time"?: float, "wait"?: float}}
 
 Rules:
 - Always include a top title object and a bottom caption object.
 - Use zones for placement (top/center/bottom) and keep visuals in center.
 - Keep it deterministic; do not include arbitrary code.
 - Keep the plan concise (6–12 objects, 5–10 beats).
+{template_block}
 """
 
     try:

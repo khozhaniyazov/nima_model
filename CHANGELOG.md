@@ -21,7 +21,5 @@
 ### Fixed
 - Overlap detector now catches chained constructor placements like `MathTex(...).move_to(ORIGIN)`.
 
-### Changed
-- Default generation model switched to `gpt-5.2-codex` (config).
-- Added plan-first JSON generator and wired deterministic plan compiler for math prompts (hybrid mode).
-- Fixed `request_analysis.py` structure so narrated plan generation works correctly after adding plan JSON generator.
+- Added template registry and selector (derived from Figma templates) to drive plan-JSON generation.
+- Plan compiler now chooses a template automatically for math prompts and passes it into plan-JSON generation.
