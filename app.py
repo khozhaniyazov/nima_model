@@ -257,6 +257,8 @@ def generate_and_validate_code(
       analyze → plan → [voiceover] → generate → combined review → validate → polish
     Returns (code, attempts_log, request_id, attempt_id, audio_segments, segment_order).
     """
+    attempts_log = []
+    request_id = None
     if FAST_PIPELINE:
         max_attempts = 1
     audio_segments = {}
