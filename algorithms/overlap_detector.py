@@ -89,12 +89,23 @@ def detect_object_accumulation(code: str) -> List[str]:
     fadeouts = len(re.findall(r'self\.play\(FadeOut\(', code))
     clear_all = len(re.findall(r'FadeOut\(\*self\.mobjects\)', code))
 
+    # If helpers are injected, require they are actually used for multi-step scenes.
+    helpers_present = ("def start_section" in code and "def end_section" in code)
+    helpers_used = len(re.findall(r'start_section\(self', code)) >= 2
+
     effective_cleanup = fadeouts + (clear_all * 5)  # each clear_all removes ~5 objects
 
-    if creates > 6 and effective_cleanup < creates * 0.3:
+    if helpers_present and not helpers_used:
+        warnings.append(
+            "[SECTION_HELPERS_UNUSED] Helpers are injected but not used. "
+            "For multi-step scenes you MUST wrap steps in start_section()/end_section() "
+            "and add created objects to the returned `section` group."
+        )
+
+    if creates > 10 and effective_cleanup < creates * 0.4:
         warnings.append(
             f"[ACCUMULATION] {creates} objects created but only ~{effective_cleanup} "
-            f"cleaned up. Risk of cluttered screen. Add FadeOut calls between sections."
+            f"cleaned up. Risk of cluttered screen. Use section lifecycle helpers or add FadeOut between steps."
         )
 
     return warnings

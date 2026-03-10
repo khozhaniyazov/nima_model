@@ -262,17 +262,20 @@ TRANSITIONS — CRITICAL FOR QUALITY
 ═══════════════════════════════════════════════════════════════════════
   NEVER use self.clear()! It destroys visual context and breaks continuity.
 
-  SECTION LIFECYCLE (use the injected helpers):
+  SECTION LIFECYCLE (MANDATORY for multi-step scenes):
     # Start each major section by cleaning up the previous one:
     title, section = start_section(self, "Section Title")
-    
-    # Add objects to the section group for easy cleanup:
+
+    # Every object you create MUST be added to `section` so it can be cleaned up:
     eq = MathTex(r"f(x) = x^2")
     section.add(eq)
     self.play(Write(eq))
-    
+
     # End the section before starting the next:
     end_section(self, section, title)
+
+  If you intentionally want a persistent header ONLY, keep just the title
+  and ensure everything else goes into `section`.
 
   If not using helpers, MANUALLY ensure:
     - self.play(FadeOut(*self.mobjects)) before each new topic
@@ -461,7 +464,12 @@ RULE 6 — LAYOUT: Ensure no two objects occupy the same screen region.
   - Body text: .to_edge(DOWN, buff=0.4)
   - Visuals: center area, use VGroup.arrange() for spacing
   - Before each new section: FadeOut everything from the previous section
-  - PREFER using start_section(self, "Title") and end_section(self, group) helpers
+  - You MUST use the injected section helpers for any multi-step explanation:
+      title, section = start_section(self, "Section Title")
+      section.add(obj1, obj2, ...)
+      ...
+      end_section(self, section, title)
+    (This prevents objects lingering for the whole video.)
   - NEVER place two different objects at the same coordinates without FadeOut between them
   - When using .copy(), ALWAYS FadeOut or remove the original before showing the copy
   - Use stack(obj1, obj2, obj3) helper to arrange multiple objects vertically
