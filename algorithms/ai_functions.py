@@ -45,7 +45,7 @@ def _llm_text(prompt_messages, model: str) -> str:
         input_text = "\n\n".join(parts)
         resp = client.responses.create(
             model=model,
-            input=input_text,
+            input=[{"role": "user", "content": [{"type": "text", "text": input_text}]}],
         )
         return resp.output_text
 
