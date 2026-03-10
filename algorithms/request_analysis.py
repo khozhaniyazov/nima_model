@@ -210,7 +210,7 @@ Rules:
 - Always include a top title object and a bottom caption object.
 - Use zones for placement (top/center/bottom) and keep visuals in center.
 - Keep it deterministic; do not include arbitrary code.
-- Keep the plan concise (6–12 objects, 5–10 beats).
+- Keep the plan concise (6–10 objects, 4–6 beats).
 {template_block}
 """
 
