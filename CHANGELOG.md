@@ -21,5 +21,5 @@
 ### Fixed
 - Overlap detector now catches chained constructor placements like `MathTex(...).move_to(ORIGIN)`.
 
-- Plan compiler now auto-promotes math-like Text to MathTex (e.g., ℝ, →, ^, _).
-- Template registry notes now include palette guidance for cleaner color consistency.
+- Added unified LLM call routing: chat models use `chat.completions`, codex uses `responses` API.
+- Updated request analysis + generation/review/fix/polish/eval paths to use the unified router.

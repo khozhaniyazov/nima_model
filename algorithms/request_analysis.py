@@ -11,10 +11,24 @@ load_dotenv()
 from config import OPENAI_API_KEY, GENERATION_MODEL, FAST_MODEL
 from algorithms.template_registry import TEMPLATES
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+def _is_codex_model(model: str) -> bool:
+    return "codex" in (model or "").lower()
 
 
-def analyze_request_type(prompt: str) -> dict:
+def _llm_text(prompt_messages, model: str) -> str:
+    if _is_codex_model(model):
+        parts = []
+        for m in prompt_messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            parts.append(f"[{role.upper()}]\n{content}")
+        input_text = "\n\n".join(parts)
+        resp = client.responses.create(model=model, input=input_text)
+        return resp.output_text
+
+    response = client.chat.completions.create(model=model, messages=prompt_messages)
+    return response.choices[0].message.content
+
     """Classify the prompt and extract metadata needed to drive generation."""
     print("[ANALYZE] Analyzing request type...")
 
@@ -57,14 +71,13 @@ APPROACH: [1 sentence: main teaching approach]
     }
 
     try:
-        response = client.chat.completions.create(
-            model=FAST_MODEL,          # ← was incorrectly "gpt-5" — now uses config
-            messages=[
+        result = _llm_text(
+            [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"Classify this request: {prompt}"},
             ],
+            model=FAST_MODEL,
         )
-        result = response.choices[0].message.content
 
         analysis = dict(defaults)
         for line in result.split("\n"):
@@ -145,9 +158,8 @@ Return ONLY the storyboard text.
 """
 
     try:
-        response = client.chat.completions.create(
-            model=GENERATION_MODEL,
-            messages=[
+        plan = _llm_text(
+            [
                 {"role": "system", "content": system_msg},
                 {
                     "role": "user",
@@ -160,8 +172,8 @@ Return ONLY the storyboard text.
                     ),
                 },
             ],
+            model=GENERATION_MODEL,
         )
-        plan = response.choices[0].message.content
         print("[PLAN] [OK] Storyboard created")
         return plan
     except Exception as e:
@@ -215,14 +227,13 @@ Rules:
 """
 
     try:
-        response = client.chat.completions.create(
-            model=GENERATION_MODEL,
-            messages=[
+        plan_json = _llm_text(
+            [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"Create a plan JSON for: {prompt}"},
             ],
+            model=GENERATION_MODEL,
         )
-        plan_json = response.choices[0].message.content
         print("[PLAN] [OK] Plan JSON created")
         return plan_json
     except Exception as e:
@@ -292,9 +303,8 @@ SEGMENT COUNT:
 Return ONLY the JSON. No markdown fences, no explanation."""
 
     try:
-        response = client.chat.completions.create(
-            model=GENERATION_MODEL,
-            messages=[
+        plan_text = _llm_text(
+            [
                 {"role": "system", "content": system_msg},
                 {
                     "role": "user",
@@ -307,8 +317,8 @@ Return ONLY the JSON. No markdown fences, no explanation."""
                     ),
                 },
             ],
-        )
-        plan_text = response.choices[0].message.content.strip()
+            model=GENERATION_MODEL,
+        ).strip()
 
         # Strip markdown fences if present
         if plan_text.startswith("```"):

@@ -23,12 +23,36 @@ from config import OPENAI_API_KEY, GENERATION_MODEL, FAST_MODEL
 from algorithms.error_parser import parse_manim_error, format_error_for_prompt
 from RAG.RAG_system import retrieve_golden_example
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+def _is_codex_model(model: str) -> bool:
+    return "codex" in (model or "").lower()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# LAYOUT HELPERS  (injected into every generated script)
-# ═══════════════════════════════════════════════════════════════════════════════
+def _llm_text(prompt_messages, model: str) -> str:
+    """Unified LLM call: chat.completions for chat models, responses for codex.
+
+    prompt_messages: list of {role, content}
+    Returns the text output.
+    """
+    if _is_codex_model(model):
+        # Flatten messages into a single input string
+        parts = []
+        for m in prompt_messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            parts.append(f"[{role.upper()}]\n{content}")
+        input_text = "\n\n".join(parts)
+        resp = client.responses.create(
+            model=model,
+            input=input_text,
+        )
+        return resp.output_text
+
+    # Default: chat.completions
+    response = client.chat.completions.create(
+        model=model,
+        messages=prompt_messages,
+    )
+    return response.choices[0].message.content
 
 LAYOUT_HELPERS = """\
 # === AUTO-INJECTED LAYOUT HELPERS ===
@@ -449,15 +473,13 @@ Subtopics: {', '.join(analysis.get('subtopics', []))}
 
 Return ONLY the complete, runnable Manim Python code. No prose, no explanation."""
 
-    response = client.chat.completions.create(
-        model=GENERATION_MODEL,
-        messages=[
+    code = _llm_text(
+        [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": f"Create a Manim animation for: {prompt}"},
         ],
-        max_completion_tokens=16000,
+        model=GENERATION_MODEL,
     )
-    code = response.choices[0].message.content
     print(f"[GENERATE] [OK] {len(code)} chars generated")
     return extract_code(code)
 
@@ -548,15 +570,14 @@ def review_and_fix(code: str, prompt: str, analysis: dict) -> str:
     """Single pass that replaces self_critique + overlapping_fix + ai_fix."""
     print("[REVIEW] Combined review pass...")
     try:
-        response = client.chat.completions.create(
-            model=GENERATION_MODEL,
-            messages=[
+        fixed = _llm_text(
+            [
                 {"role": "system", "content": REVIEW_SYSTEM},
                 {"role": "user", "content": f"Prompt context: {prompt}\n\nCode to fix:\n{code}"},
             ],
-            max_completion_tokens=16000,
+            model=GENERATION_MODEL,
         )
-        fixed = extract_code(response.choices[0].message.content)
+        fixed = extract_code(fixed)
         print("[REVIEW] [OK] Review pass complete")
         return fixed
     except Exception as e:
@@ -637,9 +658,8 @@ def fix_render_error(code: str, stderr: str, prompt: str) -> str:
     print(f"[FIX] Runtime error: {parsed['error_type']} — {parsed['error_message'][:80]}")
 
     try:
-        response = client.chat.completions.create(
-            model=GENERATION_MODEL,
-            messages=[
+        fixed = _llm_text(
+            [
                 {"role": "system", "content": FIX_SYSTEM},
                 {
                     "role": "user",
@@ -650,9 +670,9 @@ def fix_render_error(code: str, stderr: str, prompt: str) -> str:
                     ),
                 },
             ],
-            max_completion_tokens=16000,
+            model=GENERATION_MODEL,
         )
-        fixed = extract_code(response.choices[0].message.content)
+        fixed = extract_code(fixed)
         print("[FIX] [OK] Error fix applied")
         return fixed
     except Exception as e:
@@ -679,9 +699,8 @@ def polish_manim_code(code: str) -> str:
     """Lightweight syntax fixer — used when syntax validation fails."""
     print("[POLISH] Fixing syntax errors...")
     try:
-        response = client.chat.completions.create(
-            model=FAST_MODEL,
-            messages=[
+        fixed = _llm_text(
+            [
                 {
                     "role": "system",
                     "content": (
@@ -691,9 +710,9 @@ def polish_manim_code(code: str) -> str:
                 },
                 {"role": "user", "content": code},
             ],
-            max_completion_tokens=16000,
+            model=FAST_MODEL,
         )
-        return extract_code(response.choices[0].message.content)
+        return extract_code(fixed)
     except Exception as e:
         print(f"[POLISH] [ERR] {e}")
         return code
@@ -745,15 +764,13 @@ Respond ONLY with valid JSON (no markdown):
 }}"""
 
     try:
-        response = client.chat.completions.create(
-            model=FAST_MODEL,
-            messages=[
+        raw = _llm_text(
+            [
                 {"role": "system", "content": "You are an expert educational video evaluator. Return only JSON."},
                 {"role": "user", "content": eval_prompt},
             ],
-            temperature=0.2,
-        )
-        raw = response.choices[0].message.content.strip()
+            model=FAST_MODEL,
+        ).strip()
         # Strip any accidental markdown
         if "```" in raw:
             raw = raw.split("```")[1].lstrip("json").strip()
