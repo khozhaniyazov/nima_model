@@ -9,8 +9,8 @@ load_dotenv(override=True)
 
 # ── OpenAI ──────────────────────────────────────────────────────────────────
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GENERATION_MODEL = "gpt-5.2"          # main code generation model
-FAST_MODEL       = "gpt-5.2"     # light tasks (analysis, fix triage)
+GENERATION_MODEL = "gpt-5.2-codex"          # main code generation model
+FAST_MODEL       = "gpt-5.2-codex"     # light tasks (analysis, fix triage)
 
 # ── Filesystem ───────────────────────────────────────────────────────────────
 MANIM_SCRIPTS = Path("C:/temp/manim_scripts")

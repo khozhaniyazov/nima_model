@@ -48,6 +48,7 @@ from algorithms.request_analysis import (
     analyze_request_type, 
     create_animation_plan,
     create_narrated_plan,
+    create_plan_json,
 )
 from algorithms.tts import generate_voiceover, merge_audio_video
 from algorithms.ai_functions import (
@@ -59,14 +60,8 @@ from algorithms.ai_functions import (
     extract_code,
     inject_helpers,
 )
-from algorithms.code_digest import (
-    ensure_scene_class,
-    validate_python_syntax,
-    validate_names_and_imports,
-    validate_manim_code,
-    check_code_quality,
-)
-from algorithms.overlap_detector import run_all_checks as detect_overlaps
+from algorithms.plan.compiler import compile_plan
+from algorithms.plan.schema import validate_plan_dict
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -281,6 +276,59 @@ def generate_and_validate_code(
         plan = create_animation_plan(prompt, analysis)
     
     attempts_log.append({"stage": "planning", "success": True})
+
+    # ── Plan-first deterministic compilation (hybrid mode) ───────────────────
+    plan_compiled_code = None
+    use_plan_compiler = (analysis.get("domain") == "math") and (not voiceover)
+    if use_plan_compiler:
+        try:
+            render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
+            plan_json = create_plan_json(prompt, analysis)
+            plan_data = json.loads(plan_json)
+            issues = validate_plan_dict(plan_data)
+            if issues:
+                raise ValueError("; ".join(issues))
+            plan_compiled_code = compile_plan(plan_data)
+            attempts_log.append({"stage": "plan_json", "success": True})
+        except Exception as e:
+            print(f"[{job_id}] [PLAN] [ERR] Plan compiler fallback: {e}")
+            plan_compiled_code = None
+
+    if plan_compiled_code:
+        code = ensure_scene_class(plan_compiled_code)
+
+        # Safety validation
+        render_status[job_id]["message"] = "Validating code safety..."
+        is_safe, safety_issues = validate_names_and_imports(code)
+        if not is_safe:
+            print(f"[{job_id}] [SECURITY] Plan code unsafe: {safety_issues}")
+            # Fallback to LLM path
+        else:
+            # Syntax validation
+            render_status[job_id]["message"] = "Validating syntax..."
+            syntax_valid, syntax_error = validate_python_syntax(code)
+            if not syntax_valid:
+                print(f"[{job_id}] [ERR] Plan syntax error: {syntax_error}")
+            else:
+                # Structure validation
+                structure_valid, structure_error = validate_manim_code(code)
+                if not structure_valid:
+                    print(f"[{job_id}] [ERR] Plan structure error: {structure_error}")
+                else:
+                    # Quality warnings (non-blocking)
+                    quality_passes, quality_feedback = check_code_quality(code)
+                    attempts_log.append({"stage": "quality", "success": quality_passes, "feedback": quality_feedback})
+
+                    # Overlap / scene-hygiene detection (non-blocking here)
+                    render_status[job_id]["message"] = "Checking for layout overlaps..."
+                    overlap_warnings = detect_overlaps(code)
+                    if overlap_warnings:
+                        print(f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected in plan code")
+                        for w in overlap_warnings:
+                            print(f"  {w}")
+                        attempts_log.append({"stage": "overlap_check", "warnings": overlap_warnings})
+
+                    return code, attempts_log, request_id, None, audio_segments, segment_order
 
     for attempt in range(1, max_attempts + 1):
         print(f"\n[{job_id}] {'='*50}")

@@ -168,6 +168,55 @@ Return ONLY the storyboard text.
         return "No detailed plan — create a clear educational animation covering the topic step by step."
 
 
+def create_plan_json(prompt: str, analysis: dict) -> str:
+    """Generate a plan-first JSON (v1) for deterministic compilation.
+
+    Returns a JSON string compatible with algorithms/plan/schema.py.
+    """
+    print("[PLAN] Creating plan JSON (v1)...")
+
+    system_msg = """\
+You generate plan-first JSON for Manim (schema v1). Output ONLY JSON.
+
+Schema keys:
+- version: "v1"
+- meta: {"name": string}
+- objects: list of object specs
+- beats: list of beat actions
+
+Object spec:
+  {"id": str, "kind": one of [Text, MathTex, VGroup, NumberPlane, Axes, Dot, Line, Arrow, Rectangle, Circle, Square, Polygon],
+   "zone": one of [top, center, bottom, full],
+   "style": {"color"?: "BLUE"|"YELLOW"|..., "font_size"?: int, "stroke_width"?: float, "stroke_opacity"?: float, "fill_opacity"?: float},
+   "params": {"text"?: str, "tex"?: str}}
+
+Beat action:
+  {"op": "create"|"write"|"fade_in"|"fade_out"|"transform"|"move_to"|"arrange"|"set_color"|"wait",
+   "target"?: object id, "source"?: object id, "run_time"?: float, "wait"?: float}
+
+Rules:
+- Always include a top title object and a bottom caption object.
+- Use zones for placement (top/center/bottom) and keep visuals in center.
+- Keep it deterministic; do not include arbitrary code.
+- Keep the plan concise (6–12 objects, 5–10 beats).
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model=GENERATION_MODEL,
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": f"Create a plan JSON for: {prompt}"},
+            ],
+        )
+        plan_json = response.choices[0].message.content
+        print("[PLAN] [OK] Plan JSON created")
+        return plan_json
+    except Exception as e:
+        print(f"[PLAN] [ERR] {e}")
+        return ""
+
+
 def create_narrated_plan(prompt: str, analysis: dict) -> str:
     """Generate a structured JSON timeline with narration text per segment.
 

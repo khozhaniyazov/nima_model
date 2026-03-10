@@ -21,13 +21,7 @@
 ### Fixed
 - Overlap detector now catches chained constructor placements like `MathTex(...).move_to(ORIGIN)`.
 
-### 2026-03-10 (later)
-
-### Added
-- **Tracked Section helper** inside injected helpers to make cleanup hard to mess up:
-  - `sec = start_section(self, "Title")`
-  - `sec.add(...)` + `sec.play(...)` best-effort track introduced mobjects
-  - `sec.end()` guarantees FadeOut of section contents (prevents objects persisting to video end)
-
 ### Changed
-- Review rules updated to require using the section helper pattern for multi-step explanations.
+- Default generation model switched to `gpt-5.2-codex` (config).
+- Added plan-first JSON generator and wired deterministic plan compiler for math prompts (hybrid mode).
+- Fixed `request_analysis.py` structure so narrated plan generation works correctly after adding plan JSON generator.
