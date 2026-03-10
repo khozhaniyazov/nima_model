@@ -175,6 +175,18 @@ def check_code_quality(code: str) -> Tuple[bool, list]:
             "(use `lambda x=x:` pattern)"
         )
 
+    # ── Repeated move_to on same position ─────────────────────────────────────
+    move_to_positions = re.findall(r'\.move_to\((.+?)\)', code)
+    if move_to_positions:
+        from collections import Counter
+        pos_counts = Counter(p.strip() for p in move_to_positions)
+        for pos, count in pos_counts.items():
+            if count >= 3:
+                warnings.append(
+                    f"[WARN] Position '{pos}' used in move_to() {count} times — "
+                    f"high overlap risk. Use VGroup.arrange() or different positions."
+                )
+
     # ── 3b1b-quality indicators ───────────────────────────────────────────────
     good_patterns = ["ValueTracker", "always_redraw", "MathTex", "TransformMatchingTex", "TracedPath"]
     used = [p for p in good_patterns if p in code]

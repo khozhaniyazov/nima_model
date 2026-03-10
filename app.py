@@ -66,6 +66,7 @@ from algorithms.code_digest import (
     validate_manim_code,
     check_code_quality,
 )
+from algorithms.overlap_detector import run_all_checks as detect_overlaps
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -352,6 +353,30 @@ def generate_and_validate_code(
         # 5. Quality warnings (non-blocking)
         quality_passes, quality_feedback = check_code_quality(code)
         attempts_log.append({"attempt": attempt, "stage": "quality", "success": quality_passes, "feedback": quality_feedback})
+
+        # 6. Overlap / scene-hygiene detection
+        render_status[job_id]["message"] = "Checking for layout overlaps..."
+        overlap_warnings = detect_overlaps(code)
+        if overlap_warnings:
+            print(f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected")
+            for w in overlap_warnings:
+                print(f"  {w}")
+            # Feed overlap warnings back to review for a targeted fix
+            overlap_note = "\n".join(overlap_warnings)
+            code = review_and_fix(
+                code,
+                f"{prompt}\n\n[LAYOUT OVERLAP ISSUES TO FIX]:\n{overlap_note}",
+                analysis
+            )
+            code = ensure_scene_class(code)
+            # Re-check (don't loop — one repair pass is enough)
+            remaining = detect_overlaps(code)
+            if remaining:
+                print(f"[{job_id}] [OVERLAP] {len(remaining)} issues remain after fix attempt")
+                quality_feedback.extend(remaining)
+            else:
+                print(f"[{job_id}] [OVERLAP] All issues resolved")
+            attempts_log.append({"attempt": attempt, "stage": "overlap_fix", "warnings": overlap_warnings, "remaining": len(remaining) if remaining else 0})
 
         attempt_time = int((time.time() - attempt_start) * 1000)
         attempt_id = None

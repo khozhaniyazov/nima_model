@@ -55,6 +55,36 @@ def safe_zone_title(text, font_size=40):
     '''Create a persistent title in the top zone.'''
     return Text(text, font_size=font_size).to_edge(UP, buff=0.3)
 
+def start_section(scene, title_text=None, font_size=36):
+    '''Begin a new section: fade out all current objects, optionally show a title.
+    Returns (title_mob_or_None, section_group) — add all new objects to section_group.'''
+    if scene.mobjects:
+        scene.play(FadeOut(*scene.mobjects))
+    section_group = VGroup()
+    title_mob = None
+    if title_text:
+        title_mob = Text(title_text, font_size=font_size, color=BLUE).to_edge(UP, buff=0.3)
+        scene.play(Write(title_mob))
+    return title_mob, section_group
+
+def end_section(scene, section_group, title_mob=None):
+    '''Clean up a section: fade out the section_group (and title if given).'''
+    to_remove = [section_group]
+    if title_mob is not None:
+        to_remove.append(title_mob)
+    scene.play(FadeOut(*to_remove))
+
+def stack(*mobs, anchor=ORIGIN, direction=DOWN, buff=0.35):
+    '''Arrange mobjects vertically (or in given direction) from an anchor point.'''
+    g = VGroup(*mobs).arrange(direction, buff=buff).move_to(anchor)
+    return g
+
+def clear_except(scene, *keepers):
+    '''Fade out everything on screen EXCEPT the listed mobjects.'''
+    to_remove = [m for m in scene.mobjects if m not in keepers]
+    if to_remove:
+        scene.play(FadeOut(*to_remove))
+
 # === END HELPERS ===
 
 """
@@ -231,6 +261,22 @@ BOTTOM (15%): Explanation text only → Text(...).to_edge(DOWN, buff=0.4)
 TRANSITIONS — CRITICAL FOR QUALITY
 ═══════════════════════════════════════════════════════════════════════
   NEVER use self.clear()! It destroys visual context and breaks continuity.
+
+  SECTION LIFECYCLE (use the injected helpers):
+    # Start each major section by cleaning up the previous one:
+    title, section = start_section(self, "Section Title")
+    
+    # Add objects to the section group for easy cleanup:
+    eq = MathTex(r"f(x) = x^2")
+    section.add(eq)
+    self.play(Write(eq))
+    
+    # End the section before starting the next:
+    end_section(self, section, title)
+
+  If not using helpers, MANUALLY ensure:
+    - self.play(FadeOut(*self.mobjects)) before each new topic
+    - Or selectively: self.play(FadeOut(old_group))
 
   GOOD transitions (use these):
     # Selectively remove objects from the previous scene:
@@ -415,6 +461,10 @@ RULE 6 — LAYOUT: Ensure no two objects occupy the same screen region.
   - Body text: .to_edge(DOWN, buff=0.4)
   - Visuals: center area, use VGroup.arrange() for spacing
   - Before each new section: FadeOut everything from the previous section
+  - PREFER using start_section(self, "Title") and end_section(self, group) helpers
+  - NEVER place two different objects at the same coordinates without FadeOut between them
+  - When using .copy(), ALWAYS FadeOut or remove the original before showing the copy
+  - Use stack(obj1, obj2, obj3) helper to arrange multiple objects vertically
 
 RULE 7 — PACING: Every self.play() block must eventually be followed by
   self.wait() ≥ 1.0. If ≥ 5 consecutive self.play() calls lack a wait, add one.
