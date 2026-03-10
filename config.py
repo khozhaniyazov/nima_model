@@ -9,6 +9,7 @@ load_dotenv(override=True)
 
 # ── OpenAI ──────────────────────────────────────────────────────────────────
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 GENERATION_MODEL = "gpt-5.2-codex"          # main code generation model
 FAST_MODEL       = "gpt-5.2-codex"     # light tasks (analysis, fix triage)
 

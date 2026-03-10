@@ -42,6 +42,8 @@ from config import (
     MAX_GENERATION_ATTEMPTS,
     ENABLE_VOICEOVER,
     FAST_PIPELINE,
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
 )
 
 # ── Algorithm imports ──────────────────────────────────────────────────────────
@@ -74,7 +76,8 @@ from algorithms.template_registry import choose_template
 from algorithms.overlap_detector import run_all_checks as detect_overlaps
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 print(f"[STARTUP] Manim scripts: {MANIM_SCRIPTS.absolute()}")
 print(f"[STARTUP] Outputs:       {OUTPUTS.absolute()}")

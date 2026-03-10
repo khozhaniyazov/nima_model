@@ -8,10 +8,10 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
-from config import OPENAI_API_KEY, GENERATION_MODEL, FAST_MODEL
+from config import OPENAI_API_KEY, OPENAI_BASE_URL, GENERATION_MODEL, FAST_MODEL
 from algorithms.template_registry import TEMPLATES
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 def _is_codex_model(model: str) -> bool:
     return "codex" in (model or "").lower()
