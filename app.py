@@ -61,7 +61,16 @@ from algorithms.ai_functions import (
     inject_helpers,
 )
 from algorithms.plan.compiler import compile_plan
-from algorithms.code_digest import ensure_scene_class, validate_names_and_imports, validate_python_syntax, validate_manim_code
+from algorithms.code_digest import (
+    ensure_scene_class,
+    validate_names_and_imports,
+    validate_python_syntax,
+    validate_manim_code,
+    check_code_quality,
+)
+from algorithms.plan.schema import validate_plan_dict
+from algorithms.template_registry import choose_template
+from algorithms.overlap_detector import run_all_checks as detect_overlaps
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
