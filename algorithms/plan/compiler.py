@@ -46,9 +46,25 @@ def _style_lines(style: Dict[str, Any], var: str) -> List[str]:
     return out
 
 
+def _is_math_text(s: str) -> bool:
+    if not s:
+        return False
+    math_tokens = ["^", "_", "\\", "ℝ", "→", "∈", "≅", "≤", "≥", "≠", "±", "×", "·", "√", "π"]
+    return any(t in s for t in math_tokens)
+
+
 def _ctor(obj: Dict[str, Any]) -> str:
     kind = obj["kind"]
     params = obj.get("params") or {}
+
+    # Auto-upgrade Text to MathTex if it looks like math
+    if kind == "Text":
+        text = params.get("text", "")
+        if _is_math_text(text):
+            fs = obj.get("style", {}).get("font_size")
+            if fs:
+                return f"MathTex({_py(text)}, font_size={int(fs)})"
+            return f"MathTex({_py(text)})"
 
     if kind == "Text":
         text = params.get("text", "")

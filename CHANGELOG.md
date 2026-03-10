@@ -21,5 +21,5 @@
 ### Fixed
 - Overlap detector now catches chained constructor placements like `MathTex(...).move_to(ORIGIN)`.
 
-- Added template registry and selector (derived from Figma templates) to drive plan-JSON generation.
-- Plan compiler now chooses a template automatically for math prompts and passes it into plan-JSON generation.
+- Plan compiler now auto-promotes math-like Text to MathTex (e.g., ℝ, →, ^, _).
+- Template registry notes now include palette guidance for cleaner color consistency.

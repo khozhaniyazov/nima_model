@@ -18,9 +18,11 @@ TEMPLATES = {
             "highlight_side",
         ],
         "beats": 5,
+        "palette": ["#58c4dd", "#ff6b6b", "#83c167", "#1a1a2e"],
         "notes": (
             "Layout: title top; center has left panel, arrow, right panel; caption bottom; optional callout. "
-            "Use consistent left/right panels across beats; change highlight_side per beat."
+            "Use consistent left/right panels across beats; change highlight_side per beat. "
+            "Use palette colors for accents and keep background dark."
         ),
     },
     "definition_to_example": {
