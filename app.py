@@ -61,9 +61,7 @@ from algorithms.ai_functions import (
     inject_helpers,
 )
 from algorithms.plan.compiler import compile_plan
-from algorithms.plan.schema import validate_plan_dict
-from algorithms.template_registry import choose_template
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+from algorithms.code_digest import ensure_scene_class
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 print(f"[STARTUP] Manim scripts: {MANIM_SCRIPTS.absolute()}")
