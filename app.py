@@ -294,17 +294,23 @@ def generate_and_validate_code(
     attempts_log.append({"stage": "planning", "success": True})
 
     if FAST_PIPELINE and (analysis.get("domain") == "math") and (not voiceover):
-        render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
-        template_name = choose_template(prompt, analysis.get("domain"))
-        if template_name:
-            print(f"[{job_id}] [PLAN] Using template: {template_name}")
-        plan_json = create_plan_json(prompt, analysis, template_name=template_name)
-        plan_data = json.loads(plan_json)
-        issues = validate_plan_dict(plan_data)
-        if issues:
-            raise ValueError("; ".join(issues))
-        plan_compiled_code = compile_plan(plan_data)
-        attempts_log.append({"stage": "plan_json", "success": True, "template": template_name, "fast": True})
+        try:
+            render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
+            template_name = choose_template(prompt, analysis.get("domain"))
+            if template_name:
+                print(f"[{job_id}] [PLAN] Using template: {template_name}")
+            plan_json = create_plan_json(prompt, analysis, template_name=template_name)
+            if not plan_json.strip():
+                raise ValueError("Empty plan JSON")
+            plan_data = json.loads(plan_json)
+            issues = validate_plan_dict(plan_data)
+            if issues:
+                raise ValueError("; ".join(issues))
+            plan_compiled_code = compile_plan(plan_data)
+            attempts_log.append({"stage": "plan_json", "success": True, "template": template_name, "fast": True})
+        except Exception as e:
+            print(f"[{job_id}] [PLAN] [ERR] Fast plan compiler fallback: {e}")
+            plan_compiled_code = None
 
     else:
         # ── Plan-first deterministic compilation (hybrid mode) ───────────────────
