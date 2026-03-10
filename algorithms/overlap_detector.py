@@ -141,16 +141,27 @@ def detect_missing_section_cleanup(code: str) -> List[str]:
 
 
 def detect_long_construct(code: str) -> List[str]:
-    """Warn if construct() is excessively long without section helpers."""
+    """Warn if construct() is excessively long without section lifecycle helpers."""
     warnings = []
-    # Count self.play calls as proxy for complexity
     play_count = len(re.findall(r'self\.play\(', code))
-    has_helpers = "start_section" in code or "end_section" in code or "clear_except" in code
 
-    if play_count > 25 and not has_helpers:
+    # "has helpers" means the INJECTED helpers are actually used in the code.
+    # The model sometimes defines its own start_section/end_section wrappers;
+    # that doesn't guarantee tracking/cleanup.
+    uses_injected_section = (
+        re.search(r'\bsec\s*=\s*start_section\(', code) is not None
+        or re.search(r'\bsec\.end\(\)', code) is not None
+    )
+
+    if play_count > 25 and not uses_injected_section:
+        warnings.append(
+            f"[SECTION_HELPERS_UNUSED] Helpers are injected but not used. "
+            f"For multi-step scenes you MUST wrap steps in start_section()/end_section() "
+            f"and add created objects to the returned `section` group."
+        )
         warnings.append(
             f"[COMPLEXITY] construct() has {play_count} self.play() calls without "
-            f"section lifecycle helpers. High risk of object accumulation."
+            f"tracked section lifecycle. High risk of object accumulation."
         )
 
     return warnings

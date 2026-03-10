@@ -505,18 +505,22 @@ RULE 5 — LAMBDA CLOSURES: In every list comprehension or for loop creating
 
 RULE 6 — LAYOUT: Ensure no two objects occupy the same screen region.
   - Titles: .to_edge(UP, buff=0.3)
-  - Body text: .to_edge(DOWN, buff=0.4)
+  - Body text/captions: .to_edge(DOWN, buff=0.4)
   - Visuals: center area, use VGroup.arrange() for spacing
-  - Before each new section: FadeOut everything from the previous section
-  - You MUST use the injected section helpers for any multi-step explanation:
+  - You MUST use the injected tracked section helper for any multi-step explanation.
+    Do NOT define your own start_section/end_section.
+
+    REQUIRED PATTERN:
       sec = start_section(self, "Section Title")
       sec.add(obj1, obj2, ...)
       sec.play(Write(obj1))
       ...
       sec.end()
-    (This prevents objects lingering for the whole video.)
+
+    This guarantees objects do not persist to the end of the video.
+
   - NEVER place two different objects at the same coordinates without FadeOut between them
-  - When using .copy(), ALWAYS FadeOut or remove the original before showing the copy
+  - When using .copy(), ALWAYS FadeOut/remove/Transform the original (or do not copy)
   - Use stack(obj1, obj2, obj3) helper to arrange multiple objects vertically
 
 RULE 7 — PACING: Every self.play() block must eventually be followed by
