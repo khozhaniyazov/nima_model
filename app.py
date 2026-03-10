@@ -41,6 +41,7 @@ from config import (
     MAX_RENDER_RETRIES,
     MAX_GENERATION_ATTEMPTS,
     ENABLE_VOICEOVER,
+    FAST_PIPELINE,
 )
 
 # ── Algorithm imports ──────────────────────────────────────────────────────────
@@ -253,8 +254,8 @@ def generate_and_validate_code(
       analyze → plan → [voiceover] → generate → combined review → validate → polish
     Returns (code, attempts_log, request_id, attempt_id, audio_segments, segment_order).
     """
-    attempts_log = []
-    request_id = None
+    if FAST_PIPELINE:
+        max_attempts = 1
     audio_segments = {}
     segment_order = []
 
@@ -287,25 +288,39 @@ def generate_and_validate_code(
     
     attempts_log.append({"stage": "planning", "success": True})
 
-    # ── Plan-first deterministic compilation (hybrid mode) ───────────────────
-    plan_compiled_code = None
-    use_plan_compiler = (analysis.get("domain") == "math") and (not voiceover)
-    if use_plan_compiler:
-        try:
-            render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
-            template_name = choose_template(prompt, analysis.get("domain"))
-            if template_name:
-                print(f"[{job_id}] [PLAN] Using template: {template_name}")
-            plan_json = create_plan_json(prompt, analysis, template_name=template_name)
-            plan_data = json.loads(plan_json)
-            issues = validate_plan_dict(plan_data)
-            if issues:
-                raise ValueError("; ".join(issues))
-            plan_compiled_code = compile_plan(plan_data)
-            attempts_log.append({"stage": "plan_json", "success": True, "template": template_name})
-        except Exception as e:
-            print(f"[{job_id}] [PLAN] [ERR] Plan compiler fallback: {e}")
-            plan_compiled_code = None
+    if FAST_PIPELINE and (analysis.get("domain") == "math") and (not voiceover):
+        render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
+        template_name = choose_template(prompt, analysis.get("domain"))
+        if template_name:
+            print(f"[{job_id}] [PLAN] Using template: {template_name}")
+        plan_json = create_plan_json(prompt, analysis, template_name=template_name)
+        plan_data = json.loads(plan_json)
+        issues = validate_plan_dict(plan_data)
+        if issues:
+            raise ValueError("; ".join(issues))
+        plan_compiled_code = compile_plan(plan_data)
+        attempts_log.append({"stage": "plan_json", "success": True, "template": template_name, "fast": True})
+
+    else:
+        # ── Plan-first deterministic compilation (hybrid mode) ───────────────────
+        plan_compiled_code = None
+        use_plan_compiler = (analysis.get("domain") == "math") and (not voiceover)
+        if use_plan_compiler:
+            try:
+                render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
+                template_name = choose_template(prompt, analysis.get("domain"))
+                if template_name:
+                    print(f"[{job_id}] [PLAN] Using template: {template_name}")
+                plan_json = create_plan_json(prompt, analysis, template_name=template_name)
+                plan_data = json.loads(plan_json)
+                issues = validate_plan_dict(plan_data)
+                if issues:
+                    raise ValueError("; ".join(issues))
+                plan_compiled_code = compile_plan(plan_data)
+                attempts_log.append({"stage": "plan_json", "success": True, "template": template_name})
+            except Exception as e:
+                print(f"[{job_id}] [PLAN] [ERR] Plan compiler fallback: {e}")
+                plan_compiled_code = None
 
     if plan_compiled_code:
         code = ensure_scene_class(plan_compiled_code)
@@ -358,9 +373,12 @@ def generate_and_validate_code(
         attempts_log.append({"attempt": attempt, "stage": "generation", "success": True})
 
         # 2. Combined review (replaces self_critique + overlapping_fix + ai_fix)
-        render_status[job_id]["message"] = "Reviewing and fixing layout..."
-        code = review_and_fix(code, prompt, analysis)
-        attempts_log.append({"attempt": attempt, "stage": "review", "success": True})
+        if not FAST_PIPELINE:
+            render_status[job_id]["message"] = "Reviewing and fixing layout..."
+            code = review_and_fix(code, prompt, analysis)
+            attempts_log.append({"attempt": attempt, "stage": "review", "success": True})
+        else:
+            attempts_log.append({"attempt": attempt, "stage": "review", "skipped": True})
 
         # 3. Security / safety validation (AST-based — runs before syntax check)
         render_status[job_id]["message"] = "Validating code safety..."
@@ -391,12 +409,17 @@ def generate_and_validate_code(
                     "message": syntax_error,
                     "code_snippet": code[:200],
                 })
-            code = polish_manim_code(code)
-            syntax_valid, syntax_error = validate_python_syntax(code)
-            if not syntax_valid:
+            if not FAST_PIPELINE:
+                code = polish_manim_code(code)
+                syntax_valid, syntax_error = validate_python_syntax(code)
+                if not syntax_valid:
+                    if attempt < max_attempts:
+                        continue
+                    raise Exception(f"Syntax error could not be fixed: {syntax_error}")
+            else:
                 if attempt < max_attempts:
                     continue
-                raise Exception(f"Syntax error could not be fixed: {syntax_error}")
+                raise Exception(f"Syntax error: {syntax_error}")
 
         attempts_log.append({"attempt": attempt, "stage": "syntax", "success": True})
 
@@ -405,7 +428,8 @@ def generate_and_validate_code(
         structure_valid, structure_error = validate_manim_code(code)
         if not structure_valid:
             if attempt < max_attempts:
-                code = polish_manim_code(code)
+                if not FAST_PIPELINE:
+                    code = polish_manim_code(code)
                 continue
             raise Exception(f"Structure error: {structure_error}")
 
@@ -422,21 +446,25 @@ def generate_and_validate_code(
             print(f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected")
             for w in overlap_warnings:
                 print(f"  {w}")
-            # Feed overlap warnings back to review for a targeted fix
-            overlap_note = "\n".join(overlap_warnings)
-            code = review_and_fix(
-                code,
-                f"{prompt}\n\n[LAYOUT OVERLAP ISSUES TO FIX]:\n{overlap_note}",
-                analysis
-            )
-            code = ensure_scene_class(code)
-            # Re-check (don't loop — one repair pass is enough)
-            remaining = detect_overlaps(code)
-            if remaining:
-                print(f"[{job_id}] [OVERLAP] {len(remaining)} issues remain after fix attempt")
-                quality_feedback.extend(remaining)
+            if not FAST_PIPELINE:
+                # Feed overlap warnings back to review for a targeted fix
+                overlap_note = "\n".join(overlap_warnings)
+                code = review_and_fix(
+                    code,
+                    f"{prompt}\n\n[LAYOUT OVERLAP ISSUES TO FIX]:\n{overlap_note}",
+                    analysis
+                )
+                code = ensure_scene_class(code)
+                # Re-check (don't loop — one repair pass is enough)
+                remaining = detect_overlaps(code)
+                if remaining:
+                    print(f"[{job_id}] [OVERLAP] {len(remaining)} issues remain after fix attempt")
+                    quality_feedback.extend(remaining)
+                else:
+                    print(f"[{job_id}] [OVERLAP] All issues resolved")
             else:
-                print(f"[{job_id}] [OVERLAP] All issues resolved")
+                remaining = overlap_warnings
+
             attempts_log.append({"attempt": attempt, "stage": "overlap_fix", "warnings": overlap_warnings, "remaining": len(remaining) if remaining else 0})
 
         attempt_time = int((time.time() - attempt_start) * 1000)
@@ -526,7 +554,9 @@ def save_and_render(
     current_code = code
     render_job_id = None
 
-    for render_attempt in range(1, MAX_RENDER_RETRIES + 1):
+    render_retries = 1 if FAST_PIPELINE else MAX_RENDER_RETRIES
+
+    for render_attempt in range(1, render_retries + 1):
         print(f"[{job_id}] Render attempt {render_attempt}/{MAX_RENDER_RETRIES}")
         started_at = datetime.now()
 
@@ -576,18 +606,21 @@ def save_and_render(
                     print(f"[DB] [OK] Saved render job: {render_job_id}")
 
                 # Evaluate quality
-                render_status[job_id]["message"] = "Evaluating quality..."
-                evaluation = evaluate_with_gpt4(current_code, str(video_path), prompt, {
-                    "status": "done",
-                    "duration": render_duration,
-                    "error": None,
-                })
-                if db and db.available and request_id and render_job_id:
-                    db.save_ai_evaluation(request_id, render_job_id, evaluation)
-                    score = evaluation.get("overall", 0)
-                    print(f"[DB] [OK] Saved evaluation (score: {score}/100)")
-                    if score >= 80:
-                        print("[TRAINING] High-quality example candidate!")
+                if not FAST_PIPELINE:
+                    render_status[job_id]["message"] = "Evaluating quality..."
+                    evaluation = evaluate_with_gpt4(current_code, str(video_path), prompt, {
+                        "status": "done",
+                        "duration": render_duration,
+                        "error": None,
+                    })
+                    if db and db.available and request_id and render_job_id:
+                        db.save_ai_evaluation(request_id, render_job_id, evaluation)
+                        score = evaluation.get("overall", 0)
+                        print(f"[DB] [OK] Saved evaluation (score: {score}/100)")
+                        if score >= 80:
+                            print("[TRAINING] High-quality example candidate!")
+                else:
+                    print(f"[{job_id}] [FAST] Skipping evaluation")
                 return  # done
 
             elif result.returncode == 0:
@@ -617,7 +650,7 @@ def save_and_render(
                         "fix": "Feed error back to LLM for targeted fix",
                     })
 
-                if render_attempt < MAX_RENDER_RETRIES:
+                if render_attempt < render_retries:
                     render_status[job_id]["message"] = f"Fixing render error (attempt {render_attempt})..."
                     print(f"[{job_id}] → Feeding error to LLM for fix...")
                     current_code = fix_render_error(current_code, stderr, prompt)

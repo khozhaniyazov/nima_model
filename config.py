@@ -29,6 +29,7 @@ USE_DATABASE = os.environ.get("USE_DATABASE", "true").lower() == "true"
 MAX_GENERATION_ATTEMPTS = 2   # AI generation retries
 MAX_RENDER_RETRIES      = 3   # manim render retries (with LLM error-fix between each)
 RENDER_TIMEOUT_SECONDS  = 900 # 15 min max per render
+FAST_PIPELINE = os.environ.get("FAST_PIPELINE", "false").lower() == "true"
 
 # ── Voiceover (TTS) ──────────────────────────────────────────────────────────
 TTS_MODEL  = "gpt-4o-mini-tts"      # OpenAI TTS model
