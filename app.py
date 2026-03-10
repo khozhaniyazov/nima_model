@@ -490,7 +490,7 @@ def find_video_file(filename: str) -> Optional[Path]:
 def _run_manim(code: str, filename: str, job_id: str) -> subprocess.CompletedProcess:
     """Write the script and run manim. Returns the CompletedProcess."""
     script_path = MANIM_SCRIPTS / f"{filename}.py"
-    with open(script_path, "w", encoding="utf-8") as f:
+    with open(script_path, "w", encoding="utf-8", errors="replace") as f:
         f.write(code)
 
     # Clean up old exact matches first so we don't return stale files
