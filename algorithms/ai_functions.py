@@ -174,9 +174,10 @@ def get_domain_specific_guidance(domain: str) -> str:
     guides = {
         "math": """\
 **MATHEMATICAL VISUALIZATION — REQUIRED TECHNIQUES:**
-- Prefer MathTex over Text for all equations. Color-code key sub-expressions.
-- Use ValueTracker + always_redraw for live parameter animations (derivative, limit, etc.).
-- Use TracedPath to draw curves as a dot moves.
+- Prefer TransformMatchingTex or get_part_by_tex() instead of MathTex indexing (eq[0][k]).
+- Never index MathTex by position; token positions are unstable.
+- Use ValueTracker + always_redraw only when absolutely necessary; prefer static keyframes in FAST_PIPELINE.
+- Avoid TracedPath in FAST_PIPELINE; use a short polyline instead.
 - Use TransformMatchingTex for elegant step-by-step equation proofs.
 - Show geometric interpretations alongside algebraic forms.
 - For function graphs: use Axes with add_coordinates(), get_graph_label().
@@ -403,15 +404,16 @@ PEDAGOGICAL STRUCTURE — HOW TO EXPLAIN CONCEPTS
 QUALITY REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════
 1. Use MathTex (not Text) for ALL formulas and equations
-2. Color-code sub-expressions: eq[0][3:5].set_color(YELLOW)
-3. Use ValueTracker + always_redraw for any changing parameter
-4. Each major concept: introduce → animate → wait(2) → transition → next
-5. Minimum self.wait() distribution: ≥1s after each reveal, ≥2s at concept end
-6. VGroup all related objects: title+underline, equation+label, etc.
-7. Scene ends at exactly the target duration (pace wait() times accordingly)
-8. Use LaggedStart for groups of objects appearing together
-9. Prefer Transform/ReplacementTransform for related objects over FadeOut+FadeIn
-10. Keep visual focus on the CONCEPT, not on grids, axes, or decorations
+2. Color-code sub-expressions with get_part_by_tex()/set_color_by_tex() or TransformMatchingTex
+3. Avoid MathTex indexing (eq[0][k]) — token positions are unstable
+4. In FAST_PIPELINE, avoid always_redraw and TracedPath unless explicitly asked
+5. Each major concept: introduce → animate → wait(2) → transition → next
+6. Minimum self.wait() distribution: ≥1s after each reveal, ≥2s at concept end
+7. VGroup all related objects: title+underline, equation+label, etc.
+8. Scene ends at exactly the target duration (pace wait() times accordingly)
+9. Use LaggedStart for groups of objects appearing together
+10. Prefer Transform/ReplacementTransform for related objects over FadeOut+FadeIn
+11. Keep visual focus on the CONCEPT, not on grids, axes, or decorations
 """
 
 
@@ -561,10 +563,11 @@ RULE 10 — NO SELF.CLEAR(): Replace every self.clear() call with:
   self.play(FadeOut(*self.mobjects))
   This preserves visual continuity instead of abruptly wiping the screen.
 
-RULE 11 — BASIS VECTORS: If the code shows a linear transformation
-  (apply_matrix, matrix, determinant) but does NOT show basis vectors
-  (i_hat / j_hat arrows at (1,0) and (0,1)), ADD them before the transformation.
-  Basis vectors are essential for understanding what the transformation does.
+RULE 12 — NO MATH INDEXING: Do not use MathTex indexing like eq[0][k].
+  Use get_part_by_tex(), set_color_by_tex(), or TransformMatchingTex.
+
+RULE 13 — FAST MODE: In FAST_PIPELINE, avoid always_redraw and TracedPath
+  unless explicitly asked.
 """
 
 
