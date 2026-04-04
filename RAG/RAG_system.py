@@ -6,7 +6,9 @@ of ~30 proven Manim patterns drawn from 3b1b-style best practices.
 Retrieval is keyword+domain matched, with DB fallback for accumulated
 high-scoring examples.
 """
+
 from __future__ import annotations
+from functools import lru_cache
 from typing import Optional
 import json
 import re
@@ -22,7 +24,6 @@ from pathlib import Path
 # ═══════════════════════════════════════════════════════════════════════════════
 
 CORPUS = [
-
     # ── FUNCTION GRAPHING ────────────────────────────────────────────────────
     {
         "tags": ["function", "graph", "plot", "curve", "math", "calculus"],
@@ -45,10 +46,17 @@ self.play(Create(graph), Write(graph_label), run_time=2)
 self.wait(2)
 """,
     },
-
     # ── VALUE TRACKER (LIVE PARAMETER ANIMATION) ─────────────────────────────
     {
-        "tags": ["valuetracker", "dynamic", "parameter", "limit", "derivative", "live", "update"],
+        "tags": [
+            "valuetracker",
+            "dynamic",
+            "parameter",
+            "limit",
+            "derivative",
+            "live",
+            "update",
+        ],
         "notes": "ValueTracker with always_redraw for continuously-updating objects — 3b1b signature pattern",
         "pattern": """\
 axes = Axes(x_range=[-1, 5], y_range=[-1, 10], x_length=8, y_length=5)
@@ -69,7 +77,6 @@ self.play(x_tracker.animate.set_value(4), run_time=4, rate_func=linear)
 self.wait(1)
 """,
     },
-
     # ── DERIVATIVE / TANGENT LINE ─────────────────────────────────────────────
     {
         "tags": ["derivative", "tangent", "slope", "secant", "limit", "calculus"],
@@ -101,7 +108,6 @@ self.play(dx_tracker.animate.set_value(0.01), run_time=5, rate_func=linear)
 self.wait(2)
 """,
     },
-
     # ── RIEMANN SUMS ──────────────────────────────────────────────────────────
     {
         "tags": ["integral", "riemann", "area", "sum", "approximation", "calculus"],
@@ -131,10 +137,16 @@ self.play(n_tracker.animate.set_value(100), run_time=5, rate_func=smooth)
 self.wait(2)
 """,
     },
-
     # ── NUMBER LINE ───────────────────────────────────────────────────────────
     {
-        "tags": ["number_line", "number line", "sequence", "convergence", "limit", "real numbers"],
+        "tags": [
+            "number_line",
+            "number line",
+            "sequence",
+            "convergence",
+            "limit",
+            "real numbers",
+        ],
         "notes": "Animated number line with movable dot — great for limits and sequences",
         "pattern": """\
 nl = NumberLine(x_range=[-3, 3, 1], length=10, include_numbers=True)
@@ -147,10 +159,16 @@ self.play(dot.animate.move_to(nl.n2p(2.718)), run_time=3)
 self.wait(1)
 """,
     },
-
     # ── NUMBER PLANE ──────────────────────────────────────────────────────────
     {
-        "tags": ["number_plane", "numberplane", "grid", "vector", "linear algebra", "transformation"],
+        "tags": [
+            "number_plane",
+            "numberplane",
+            "grid",
+            "vector",
+            "linear algebra",
+            "transformation",
+        ],
         "notes": "NumberPlane with vector arrows — essential for linear algebra topics",
         "pattern": """\
 plane = NumberPlane(
@@ -169,10 +187,17 @@ self.play(GrowArrow(v1), GrowArrow(v2), Write(labels))
 self.wait(2)
 """,
     },
-
     # ── LINEAR TRANSFORMATION ──────────────────────────────────────────────────
     {
-        "tags": ["linear transformation", "matrix", "transform", "linear algebra", "eigenvector", "determinant", "basis"],
+        "tags": [
+            "linear transformation",
+            "matrix",
+            "transform",
+            "linear algebra",
+            "eigenvector",
+            "determinant",
+            "basis",
+        ],
         "notes": "Apply a 2D linear transformation with basis vectors and unit square — 3b1b classic",
         "pattern": """\
 plane = NumberPlane(
@@ -211,10 +236,17 @@ self.play(
 self.wait(2)
 """,
     },
-
     # ── STEP-BY-STEP EQUATIONS ────────────────────────────────────────────────
     {
-        "tags": ["equation", "algebra", "step", "step-by-step", "proof", "derivation", "transform"],
+        "tags": [
+            "equation",
+            "algebra",
+            "step",
+            "step-by-step",
+            "proof",
+            "derivation",
+            "transform",
+        ],
         "notes": "Progressive equation reveal with TransformMatchingTex — elegant step-by-step math",
         "pattern": """\
 eq1 = MathTex(r"x^2 - 5x + 6 = 0", font_size=52)
@@ -229,7 +261,6 @@ self.play(TransformMatchingTex(eq2, eq3), run_time=2)
 self.wait(2)
 """,
     },
-
     # ── MATHTEX COLOR HIGHLIGHTING ────────────────────────────────────────────
     {
         "tags": ["mathtex", "color", "highlight", "equation", "formula", "math"],
@@ -254,10 +285,17 @@ self.play(GrowFromCenter(brace), Write(brace_text))
 self.wait(2)
 """,
     },
-
     # ── BAR CHART / DISTRIBUTION ──────────────────────────────────────────────
     {
-        "tags": ["bar chart", "histogram", "distribution", "probability", "statistics", "chart", "frequency"],
+        "tags": [
+            "bar chart",
+            "histogram",
+            "distribution",
+            "probability",
+            "statistics",
+            "chart",
+            "frequency",
+        ],
         "notes": "Animated bar chart with updating values — great for probability/statistics",
         "pattern": """\
 values = [0.1, 0.2, 0.4, 0.2, 0.1]
@@ -286,7 +324,6 @@ self.play(LaggedStart(*[GrowFromEdge(b, DOWN) for b in bars], lag_ratio=0.1))
 self.wait(2)
 """,
     },
-
     # ── TRACED PATH ───────────────────────────────────────────────────────────
     {
         "tags": ["traced path", "parametric", "curve", "path", "locus", "motion"],
@@ -305,10 +342,16 @@ self.play(t.animate.set_value(TAU), run_time=4, rate_func=linear)
 self.wait(1)
 """,
     },
-
     # ── VECTOR FIELD ──────────────────────────────────────────────────────────
     {
-        "tags": ["vector field", "flow", "differential equation", "gradient", "curl", "physics"],
+        "tags": [
+            "vector field",
+            "flow",
+            "differential equation",
+            "gradient",
+            "curl",
+            "physics",
+        ],
         "notes": "Animated vector field — great for physics and differential equations",
         "pattern": """\
 func = lambda pos: np.array([-pos[1], pos[0], 0]) * 0.5  # rotation field
@@ -320,10 +363,17 @@ self.play(Create(stream, lag_ratio=0.01), run_time=3)
 self.wait(2)
 """,
     },
-
     # ── SORTING ALGORITHM ─────────────────────────────────────────────────────
     {
-        "tags": ["sort", "bubble sort", "algorithm", "array", "comparison", "computer science", "cs"],
+        "tags": [
+            "sort",
+            "bubble sort",
+            "algorithm",
+            "array",
+            "comparison",
+            "computer science",
+            "cs",
+        ],
         "notes": "Animated array sorting with color-coded comparisons and swaps",
         "pattern": """\
 data = [5, 3, 8, 1, 9, 2, 7, 4]
@@ -372,10 +422,18 @@ for i in range(len(arr)):
 self.wait(1)
 """,
     },
-
     # ── BINARY TREE ───────────────────────────────────────────────────────────
     {
-        "tags": ["tree", "binary tree", "bst", "bfs", "dfs", "graph", "recursion", "computer science"],
+        "tags": [
+            "tree",
+            "binary tree",
+            "bst",
+            "bfs",
+            "dfs",
+            "graph",
+            "recursion",
+            "computer science",
+        ],
         "notes": "Build a binary tree node-by-node with connecting edges",
         "pattern": """\
 def make_node(val, color=BLUE):
@@ -409,7 +467,6 @@ self.play(LaggedStart(
 self.wait(2)
 """,
     },
-
     # ── MATRIX MULTIPLICATION ─────────────────────────────────────────────────
     {
         "tags": ["matrix", "matrix multiplication", "linear algebra", "determinant"],
@@ -435,10 +492,17 @@ self.play(Write(eq), Write(result))
 self.wait(2)
 """,
     },
-
     # ── PROBABILITY / PIE CHART ───────────────────────────────────────────────
     {
-        "tags": ["probability", "conditional", "bayes", "pie", "pie chart", "proportion", "circle"],
+        "tags": [
+            "probability",
+            "conditional",
+            "bayes",
+            "pie",
+            "pie chart",
+            "proportion",
+            "circle",
+        ],
         "notes": "Sector-based probability visualization with proportional areas",
         "pattern": """\
 circle = Circle(radius=2, color=WHITE)
@@ -455,10 +519,16 @@ self.play(Write(label_a), Write(label_b))
 self.wait(2)
 """,
     },
-
     # ── TAYLOR SERIES ─────────────────────────────────────────────────────────
     {
-        "tags": ["taylor", "maclaurin", "series", "approximation", "polynomial", "calculus"],
+        "tags": [
+            "taylor",
+            "maclaurin",
+            "series",
+            "approximation",
+            "polynomial",
+            "calculus",
+        ],
         "notes": "Show Taylor polynomial approximations of increasing degree converging to a function",
         "pattern": """\
 import numpy as np
@@ -483,10 +553,15 @@ for n, color in enumerate(colors):
 self.wait(2)
 """,
     },
-
     # ── EIGENVALUE / EIGENVECTOR ──────────────────────────────────────────────
     {
-        "tags": ["eigenvalue", "eigenvector", "matrix", "linear algebra", "transformation"],
+        "tags": [
+            "eigenvalue",
+            "eigenvector",
+            "matrix",
+            "linear algebra",
+            "transformation",
+        ],
         "notes": "Show that eigenvectors only scale under a matrix transformation — visual intuition",
         "pattern": """\
 plane = NumberPlane(
@@ -516,10 +591,19 @@ self.play(
 self.wait(2)
 """,
     },
-
     # ── GRAPH / NETWORK ───────────────────────────────────────────────────────
     {
-        "tags": ["graph", "network", "node", "edge", "dijkstra", "bfs", "dfs", "path", "shortest path"],
+        "tags": [
+            "graph",
+            "network",
+            "node",
+            "edge",
+            "dijkstra",
+            "bfs",
+            "dfs",
+            "path",
+            "shortest path",
+        ],
         "notes": "Animated graph/network with highlighted traversal path",
         "pattern": """\
 # Build a small weighted graph
@@ -551,10 +635,18 @@ self.play(*[edges[e].animate.set_color(YELLOW).set_stroke(width=4) for e in path
 self.wait(2)
 """,
     },
-
     # ── FOURIER SERIES ────────────────────────────────────────────────────────
     {
-        "tags": ["fourier", "series", "frequency", "sine", "cosine", "wave", "signal", "spectrum"],
+        "tags": [
+            "fourier",
+            "series",
+            "frequency",
+            "sine",
+            "cosine",
+            "wave",
+            "signal",
+            "spectrum",
+        ],
         "notes": "Build a Fourier approximation by layering sine waves",
         "pattern": """\
 import numpy as np
@@ -576,10 +668,17 @@ for n, color in enumerate([1, 3, 5, 11]):
 self.wait(2)
 """,
     },
-
     # ── COMPLEX NUMBER / ARGAND PLANE ──────────────────────────────────────────
     {
-        "tags": ["complex", "argand", "imaginary", "modulus", "argument", "euler", "roots"],
+        "tags": [
+            "complex",
+            "argand",
+            "imaginary",
+            "modulus",
+            "argument",
+            "euler",
+            "roots",
+        ],
         "notes": "Show complex numbers on the Argand plane with polar representation",
         "pattern": """\
 plane = ComplexPlane(x_range=[-3, 3], y_range=[-3, 3]).add_coordinates()
@@ -597,10 +696,17 @@ self.play(Create(real_line), Create(modulus_line))
 self.wait(2)
 """,
     },
-
     # ── GEOMETRY PROOF ────────────────────────────────────────────────────────
     {
-        "tags": ["geometry", "proof", "triangle", "circle", "angle", "theorem", "pythagorean"],
+        "tags": [
+            "geometry",
+            "proof",
+            "triangle",
+            "circle",
+            "angle",
+            "theorem",
+            "pythagorean",
+        ],
         "notes": "Rigorous geometric construction with labeled angles and sides",
         "pattern": """\
 triangle = Polygon(
@@ -628,10 +734,16 @@ self.play(Write(theorem))
 self.wait(2)
 """,
     },
-
     # ── RECURSIVE / FRACTAL ────────────────────────────────────────────────────
     {
-        "tags": ["recursion", "fractal", "self-similar", "sierpinski", "tree fractal", "fibonacci"],
+        "tags": [
+            "recursion",
+            "fractal",
+            "self-similar",
+            "sierpinski",
+            "tree fractal",
+            "fibonacci",
+        ],
         "notes": "Animated recursive structure — shown level by level",
         "pattern": """\
 def sierpinski(n, pos, size):
@@ -656,10 +768,16 @@ for level in range(4):
 self.wait(2)
 """,
     },
-
     # ── POPULATION / LOGISTIC GROWTH ──────────────────────────────────────────
     {
-        "tags": ["logistic", "population", "growth", "differential equation", "equilibrium", "dynamics"],
+        "tags": [
+            "logistic",
+            "population",
+            "growth",
+            "differential equation",
+            "equilibrium",
+            "dynamics",
+        ],
         "notes": "Phase portrait and solution curve for logistic growth ODE",
         "pattern": """\
 import numpy as np
@@ -684,10 +802,16 @@ self.play(Create(equilibrium), Write(eq_label))
 self.wait(2)
 """,
     },
-
     # ── CENTRAL LIMIT THEOREM / SAMPLING ─────────────────────────────────────
     {
-        "tags": ["central limit theorem", "clt", "normal distribution", "gaussian", "statistics", "sampling"],
+        "tags": [
+            "central limit theorem",
+            "clt",
+            "normal distribution",
+            "gaussian",
+            "statistics",
+            "sampling",
+        ],
         "notes": "3b1b-inspired: show sample means converging to a normal distribution",
         "pattern": """\
 import numpy as np
@@ -722,10 +846,16 @@ self.play(Create(normal), run_time=2)
 self.wait(2)
 """,
     },
-
     # ── PI ESTIMATION / MONTE CARLO ───────────────────────────────────────────
     {
-        "tags": ["monte carlo", "simulation", "random", "pi", "probability", "estimation"],
+        "tags": [
+            "monte carlo",
+            "simulation",
+            "random",
+            "pi",
+            "probability",
+            "estimation",
+        ],
         "notes": "Monte Carlo π estimation — dots scatter inside/outside circle with a live count",
         "pattern": """\
 import numpy as np
@@ -758,10 +888,16 @@ self.play(Write(MathTex(r"\\pi \\approx " + f"{4*inside_count/total_count:.4f}",
 self.wait(2)
 """,
     },
-
     # ── NUMBER SIEVE / NUMBER THEORY ─────────────────────────────────────────
     {
-        "tags": ["prime", "sieve", "number theory", "divisibility", "factor", "modular"],
+        "tags": [
+            "prime",
+            "sieve",
+            "number theory",
+            "divisibility",
+            "factor",
+            "modular",
+        ],
         "notes": "Sieve of Eratosthenes — animate elimination of multiples on a number grid",
         "pattern": """\
 from manim import *
@@ -809,10 +945,16 @@ class GeneratedScene(Scene):
         self.wait(2)
 """,
     },
-
     # ── PENDULUM / PHYSICS SIMULATION ─────────────────────────────────────────
     {
-        "tags": ["pendulum", "oscillation", "spring", "simple harmonic", "physics", "mechanics"],
+        "tags": [
+            "pendulum",
+            "oscillation",
+            "spring",
+            "simple harmonic",
+            "physics",
+            "mechanics",
+        ],
         "notes": "Animated pendulum with ValueTracker controlling angle — clean physics pattern",
         "pattern": """\
 axes = Axes(x_range=[0, 10, 1], y_range=[-1.2, 1.2, 0.5], x_length=9, y_length=4)
@@ -842,10 +984,17 @@ self.play(t.animate.set_value(6), run_time=6, rate_func=linear)
 self.wait(1)
 """,
     },
-
     # ── SUPPLY AND DEMAND / ECONOMICS ─────────────────────────────────────────
     {
-        "tags": ["supply", "demand", "economics", "equilibrium", "price", "market", "intersection"],
+        "tags": [
+            "supply",
+            "demand",
+            "economics",
+            "equilibrium",
+            "price",
+            "market",
+            "intersection",
+        ],
         "notes": "Supply and demand curves meeting at equilibrium — classic economics visual",
         "pattern": """\
 axes = Axes(
@@ -878,10 +1027,18 @@ self.play(Create(v_line), Create(h_line))
 self.wait(2)
 """,
     },
-
     # ── GENERAL PROCESS FLOW / TIMELINE ───────────────────────────────────────
     {
-        "tags": ["process", "flow", "timeline", "steps", "stages", "sequence", "general", "comparison"],
+        "tags": [
+            "process",
+            "flow",
+            "timeline",
+            "steps",
+            "stages",
+            "sequence",
+            "general",
+            "comparison",
+        ],
         "notes": "Animated step-by-step process flow with arrows — works for any sequential topic",
         "pattern": """\
 steps = ["Input", "Process", "Output"]
@@ -904,10 +1061,16 @@ self.play(LaggedStart(*[GrowArrow(a) for a in arrows], lag_ratio=0.3))
 self.wait(2)
 """,
     },
-
     # ── COMPLETE MINI-SCENE EXAMPLE — PYTHAGOREAN THEOREM PROOF ──────────────
     {
-        "tags": ["complete scene", "template", "pythagorean", "geometry", "proof", "example"],
+        "tags": [
+            "complete scene",
+            "template",
+            "pythagorean",
+            "geometry",
+            "proof",
+            "example",
+        ],
         "notes": "COMPLETE SCENE EXAMPLE: full 3-act structure with title, visual proof, and summary",
         "pattern": """\
 from manim import *
@@ -1017,11 +1180,13 @@ def _load_json_examples():
 
         tags = list(set(tags))  # deduplicate
 
-        CORPUS.append({
-            "tags": tags,
-            "notes": f"Official Manim CE example: {scene}",
-            "pattern": code,
-        })
+        CORPUS.append(
+            {
+                "tags": tags,
+                "notes": f"Official Manim CE example: {scene}",
+                "pattern": code,
+            }
+        )
 
 
 # Load at module import time
@@ -1032,16 +1197,22 @@ _load_json_examples()
 # RETRIEVAL FUNCTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def retrieve_patterns(domain: str, topic: str, subtopics: list[str] = None, limit: int = 3) -> list[dict]:
+
+@lru_cache(maxsize=128)
+def retrieve_patterns(
+    domain: str, topic: str, subtopics: tuple = (), limit: int = 3
+) -> tuple:
     """
     Return up to `limit` relevant patterns from the corpus.
     Scoring:
       - +1 for each individual keyword match
       - +2 bonus for each multi-word tag phrase that appears verbatim in the query
     Falls back to generic domain patterns if nothing matches.
+
+    Note: Returns tuple for hashability (required for lru_cache).
     """
-    subtopics = subtopics or []
-    query_text = " ".join([domain, topic] + subtopics).lower().replace("_", " ")
+    subtopics = subtopics or ()
+    query_text = " ".join([domain, topic] + list(subtopics)).lower().replace("_", " ")
     query_tokens = set(query_text.split())
 
     scored = []
@@ -1061,14 +1232,16 @@ def retrieve_patterns(domain: str, topic: str, subtopics: list[str] = None, limi
 
     scored.sort(key=lambda x: -x[0])
     if scored:
-        return [e for _, e in scored[:limit]]
+        return tuple(e for _, e in scored[:limit])
 
     # fallback: return first matching domain entries
     fallback = [e for e in CORPUS if domain.lower() in " ".join(e["tags"]).lower()]
-    return fallback[:limit] if fallback else CORPUS[:2]
+    return tuple(fallback[:limit]) if fallback else tuple(CORPUS[:2])
 
 
-def retrieve_golden_example(domain: str, topic: str, subtopics: list[str] = None, db=None) -> str:
+def retrieve_golden_example(
+    domain: str, topic: str, subtopics: list[str] = None, db=None
+) -> str:
     """
     Build a formatted string of golden patterns to inject into the generation prompt.
     Also queries DB for real high-scoring examples.
@@ -1089,14 +1262,15 @@ def retrieve_golden_example(domain: str, topic: str, subtopics: list[str] = None
             pass
 
     # 2. Curated corpus patterns
-    patterns = retrieve_patterns(domain, topic, subtopics, limit=3)
+    # Convert to tuple for lru_cache compatibility
+    subtopics_tuple = tuple(subtopics) if subtopics else ()
+    patterns = retrieve_patterns(domain, topic, subtopics_tuple, limit=3)
     for p in patterns:
-        sections.append(
-            f"# [OK] PROVEN PATTERN: {p['notes']}\n"
-            f"{p['pattern']}"
-        )
+        sections.append(f"# [OK] PROVEN PATTERN: {p['notes']}\n{p['pattern']}")
 
     if not sections:
-        return "# No domain-specific patterns found. Use standard Manim CE best practices."
+        return (
+            "# No domain-specific patterns found. Use standard Manim CE best practices."
+        )
 
     return "\n\n".join(sections)

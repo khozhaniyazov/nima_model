@@ -1,17 +1,20 @@
 """
 Request analysis — classifies a user prompt and creates an animation storyboard.
 """
+
 from openai import OpenAI
 import os
 import re
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, GENERATION_MODEL, FAST_MODEL
 from algorithms.template_registry import TEMPLATES
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+
 
 def _is_codex_model(model: str) -> bool:
     return "codex" in (model or "").lower()
@@ -25,7 +28,15 @@ def _llm_text(prompt_messages, model: str) -> str:
             content = m.get("content", "")
             parts.append(f"[{role.upper()}]\n{content}")
         input_text = "\n\n".join(parts)
-        resp = client.responses.create(model=model, input=input_text)
+        resp = client.responses.create(
+            model=model,
+            input=[
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": input_text}],
+                }
+            ],
+        )
         return resp.output_text
 
     response = client.chat.completions.create(model=model, messages=prompt_messages)
@@ -80,7 +91,7 @@ APPROACH: [1 sentence: main teaching approach]
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"Classify this request: {prompt}"},
             ],
-            model=FAST_MODEL,
+            model=FAST_MODEL,  # Analysis is just classification, use fast model
         )
 
         analysis = dict(defaults)
@@ -106,7 +117,9 @@ APPROACH: [1 sentence: main teaching approach]
             elif line.startswith("APPROACH:"):
                 analysis["approach"] = line[9:].strip()
 
-        print(f"[ANALYZE] [OK] type={analysis['type']} domain={analysis['domain']} duration={analysis['duration']}s")
+        print(
+            f"[ANALYZE] [OK] type={analysis['type']} domain={analysis['domain']} duration={analysis['duration']}s"
+        )
         return analysis
 
     except Exception as e:
@@ -327,10 +340,13 @@ Return ONLY the JSON. No markdown fences, no explanation."""
         # Strip markdown fences if present
         if plan_text.startswith("```"):
             lines = plan_text.split("\n")
-            plan_text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+            plan_text = "\n".join(
+                lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+            )
 
         # Validate JSON
         import json
+
         data = json.loads(plan_text)
         assert "segments" in data, "Missing 'segments' key"
         assert len(data["segments"]) > 0, "No segments"
@@ -345,13 +361,66 @@ Return ONLY the JSON. No markdown fences, no explanation."""
         print(f"[PLAN] [ERR] Narrated plan failed: {e}")
         # Fallback: a minimal single-segment plan
         import json
+
         fallback = {
-            "segments": [{
-                "id": "scene_1",
-                "title": "Full Animation",
-                "narration": f"Let me explain {analysis.get('topic', 'this concept')} step by step.",
-                "visual_description": "Show the concept with clear visual progression.",
-                "estimated_duration": analysis.get("duration", 60),
-            }]
+            "segments": [
+                {
+                    "id": "scene_1",
+                    "title": "Full Animation",
+                    "narration": f"Let me explain {analysis.get('topic', 'this concept')} step by step.",
+                    "visual_description": "Show the concept with clear visual progression.",
+                    "estimated_duration": analysis.get("duration", 60),
+                }
+            ]
         }
         return json.dumps(fallback)
+
+
+def expand_short_prompt(prompt: str) -> str:
+    """Expand truncated or short problem-solving prompts for better generation.
+
+    Detects prompts like:
+    - "Solve log_3(x) = 2…"
+    - "Compute lim(x→0) sin(x)/x…"
+    - "Find the derivative of..."
+
+    And expands them with what the animation should show.
+    """
+    original = prompt
+    prompt = prompt.strip()
+
+    is_truncated = prompt.endswith("…") or prompt.endswith("...")
+    starts_with_verb = re.match(
+        r"^(solve|compute|find|calculate|evaluate|determine|prove|show|derive)",
+        prompt.lower(),
+    )
+
+    if is_truncated or starts_with_verb:
+        extension = ""
+
+        if "log" in prompt.lower():
+            extension = " Show the step-by-step solution with clear visual explanation of logarithms."
+        elif "lim" in prompt.lower() or "limit" in prompt.lower():
+            extension = " Show the graphical interpretation and step-by-step evaluation of the limit."
+        elif "derivative" in prompt.lower() or "differentiate" in prompt.lower():
+            extension = " Show the step-by-step differentiation with visual interpretation of the rate of change."
+        elif "integral" in prompt.lower():
+            extension = " Show the step-by-step integration with area under curve visualization."
+        elif "solve" in prompt.lower() and any(
+            x in prompt.lower() for x in ["equation", "="]
+        ):
+            extension = (
+                " Show each step of solving the equation with visual transformation."
+            )
+        elif "compute" in prompt.lower() or "calculate" in prompt.lower():
+            extension = (
+                " Show the computation step-by-step with clear visual explanation."
+            )
+
+        if extension:
+            prompt = prompt.rstrip("…").rstrip("...") + extension
+
+    if prompt != original:
+        print(f"[EXPAND] Expanded prompt: '{original}' -> '{prompt}'")
+
+    return prompt

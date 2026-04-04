@@ -9,9 +9,11 @@ import subprocess
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from openai import OpenAI
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from config import OPENAI_API_KEY, TTS_MODEL, TTS_VOICE
@@ -23,13 +25,14 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # AUDIO GENERATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def generate_segment_audio(text: str, output_path: str, voice: str = None) -> float:
     """
     Generate a single TTS audio segment.
     Returns the duration in seconds.
     """
     voice = voice or TTS_VOICE
-    print(f"[TTS] Generating: \"{text[:60]}...\" → {Path(output_path).name}")
+    print(f'[TTS] Generating: "{text[:60]}..." → {Path(output_path).name}')
 
     response = client.audio.speech.create(
         model=TTS_MODEL,
@@ -52,12 +55,18 @@ def _get_audio_duration(path: str) -> float:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
                 path,
             ],
-            capture_output=True, text=True, timeout=10
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return float(result.stdout.strip())
     except Exception:
@@ -70,13 +79,25 @@ def _get_audio_duration(path: str) -> float:
 # VOICEOVER PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+def _generate_single_segment(args: tuple) -> tuple:
+    """Worker function for parallel TTS generation."""
+    seg_id, text, output_path, voice = args
+    try:
+        duration = generate_segment_audio(text, output_path, voice=voice)
+        return seg_id, {"path": output_path, "duration": duration, "error": None}
+    except Exception as e:
+        print(f"[TTS] [ERR] {seg_id}: {e}")
+        return seg_id, {"path": None, "duration": 5.0, "error": str(e)}
+
+
 def generate_voiceover(
     segments: List[dict],
     output_dir: str,
     voice: str = None,
 ) -> Dict[str, dict]:
     """
-    Generate TTS audio for all narration segments.
+    Generate TTS audio for all narration segments (parallelized).
 
     Args:
         segments: list of {"id": "scene_1", "narration": "text..."}
@@ -89,17 +110,32 @@ def generate_voiceover(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     results = {}
 
+    # Prepare tasks for parallel execution
+    tasks = []
     for seg in segments:
         seg_id = seg["id"]
         text = seg.get("narration", "").strip()
         if not text:
             print(f"[TTS] [SKIP] {seg_id}: no narration text")
-            results[seg_id] = {"path": None, "duration": seg.get("estimated_duration", 5.0)}
+            results[seg_id] = {
+                "path": None,
+                "duration": seg.get("estimated_duration", 5.0),
+            }
             continue
 
         audio_path = str(Path(output_dir) / f"{seg_id}.mp3")
-        duration = generate_segment_audio(text, audio_path, voice=voice)
-        results[seg_id] = {"path": audio_path, "duration": duration}
+        tasks.append((seg_id, text, audio_path, voice or TTS_VOICE))
+
+    # Generate all audio segments in parallel
+    if tasks:
+        with ThreadPoolExecutor(max_workers=min(len(tasks), 8)) as executor:
+            futures = {
+                executor.submit(_generate_single_segment, task): task[0]
+                for task in tasks
+            }
+            for future in as_completed(futures):
+                seg_id, result = future.result()
+                results[seg_id] = result
 
     total_duration = sum(r["duration"] for r in results.values())
     print(f"[TTS] [OK] All segments generated — total narration: {total_duration:.1f}s")
@@ -109,6 +145,7 @@ def generate_voiceover(
 # ═══════════════════════════════════════════════════════════════════════════════
 # AUDIO + VIDEO MERGE
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def merge_audio_video(
     video_path: str,
@@ -155,27 +192,42 @@ def merge_audio_video(
 
         subprocess.run(
             [
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", concat_list,
-                "-c", "copy",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                concat_list,
+                "-c",
+                "copy",
                 narration_path,
             ],
-            capture_output=True, timeout=60
+            capture_output=True,
+            timeout=60,
         )
 
     # Merge narration with video
     print(f"[MERGE] Merging audio + video → {Path(output_path).name}")
     result = subprocess.run(
         [
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", narration_path,
-            "-c:v", "copy",
-            "-c:a", "aac",
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-i",
+            narration_path,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
             "-shortest",
             output_path,
         ],
-        capture_output=True, text=True, timeout=120
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
 
     if result.returncode == 0 and Path(output_path).exists():

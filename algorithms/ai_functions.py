@@ -9,52 +9,112 @@ Changes vs. original:
   - Added fix_render_error() that feeds Manim stderr back to the LLM
   - Richer generation prompt with 3b1b-style patterns and ValueTracker guidance
   - RAG retrieval now uses real RAG_system.retrieve_golden_example
+  - Added retry logic with exponential backoff and timeout handling
+  - Added fallback model support for reliability
 """
 
 from openai import OpenAI
 import os
 import json
+import time
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, GENERATION_MODEL, FAST_MODEL
 from algorithms.error_parser import parse_manim_error, format_error_for_prompt
 from RAG.RAG_system import retrieve_golden_example
 
-client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+# Fallback models if primary fails
+FALLBACK_MODEL = "gpt-4o-mini"
+FALLBACK_BASE_URL = "https://api.openai.com/v1"
+
+client = OpenAI(
+    api_key=OPENAI_API_KEY,
+    base_url=OPENAI_BASE_URL,
+    timeout=60.0,
+)
+
+# Fallback client for when primary fails
+fallback_client = OpenAI(
+    api_key=OPENAI_API_KEY,
+    base_url=FALLBACK_BASE_URL,
+    timeout=60.0,
+)
+
 
 def _is_codex_model(model: str) -> bool:
     return "codex" in (model or "").lower()
 
 
-def _llm_text(prompt_messages, model: str) -> str:
-    """Unified LLM call: chat.completions for chat models, responses for codex.
+def _llm_text_with_retry(prompt_messages, model: str, max_retries: int = 3) -> str:
+    """LLM call with retry logic, exponential backoff, and fallback model support.
 
     prompt_messages: list of {role, content}
     Returns the text output.
     """
-    if _is_codex_model(model):
-        # Flatten messages into a single input string
-        parts = []
-        for m in prompt_messages:
-            role = m.get("role", "user")
-            content = m.get("content", "")
-            parts.append(f"[{role.upper()}]\n{content}")
-        input_text = "\n\n".join(parts)
-        resp = client.responses.create(
-            model=model,
-            input=[{"role": "user", "content": [{"type": "input_text", "text": input_text}]}],
-        )
-        return resp.output_text
+    last_error = None
+    used_fallback = False
 
-    # Default: chat.completions
-    response = client.chat.completions.create(
-        model=model,
-        messages=prompt_messages,
-    )
-    return response.choices[0].message.content
+    for attempt in range(max_retries):
+        try:
+            if _is_codex_model(model):
+                # Flatten messages into a single input string
+                parts = []
+                for m in prompt_messages:
+                    role = m.get("role", "user")
+                    content = m.get("content", "")
+                    parts.append(f"[{role.upper()}]\n{content}")
+                input_text = "\n\n".join(parts)
+
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": input_text}],
+                    max_tokens=4000,
+                )
+                return response.choices[0].message.content
+
+            # Default: chat.completions
+            response = client.chat.completions.create(
+                model=model,
+                messages=prompt_messages,
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+
+            # Check for 524 error - try fallback model
+            if "524" in error_str or "bad_response_status_code" in error_str:
+                if not used_fallback:
+                    print(f"[LLM] Primary model failed with 524, trying fallback...")
+                    try:
+                        # Try with fallback client
+                        response = fallback_client.chat.completions.create(
+                            model=FALLBACK_MODEL,
+                            messages=prompt_messages,
+                        )
+                        return response.choices[0].message.content
+                    except Exception as fallback_error:
+                        print(f"[LLM] Fallback also failed: {fallback_error}")
+                        used_fallback = False  # Reset for retries
+
+            wait_time = (2**attempt) * 2
+            print(f"[LLM] Attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                print(f"[LLM] Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+
+    raise Exception(f"LLM call failed after {max_retries} attempts: {last_error}")
+
+
+# Backwards compatibility alias
+_llm_text = _llm_text_with_retry
+
 
 LAYOUT_HELPERS = """\
 # === AUTO-INJECTED LAYOUT HELPERS ===
@@ -162,13 +222,16 @@ def clear_except(scene, *keepers):
 
 def inject_helpers(code: str) -> str:
     if "from manim import *" in code:
-        return code.replace("from manim import *", "from manim import *\n" + LAYOUT_HELPERS)
+        return code.replace(
+            "from manim import *", "from manim import *\n" + LAYOUT_HELPERS
+        )
     return LAYOUT_HELPERS + "\n" + code
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — DOMAIN GUIDANCE
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def get_domain_specific_guidance(domain: str) -> str:
     guides = {
@@ -225,6 +288,7 @@ def get_domain_specific_guidance(domain: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 2 — ERROR WARNINGS FROM DB
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def get_error_warnings(db=None) -> str:
     if not db or not db.available:
@@ -314,6 +378,7 @@ API CORRECTIONS — THESE MISTAKES WILL CRASH THE RENDER
 [CRASH] arrow.get_length()          → [FIX] np.linalg.norm(arrow.get_vector())
 [CRASH] DashedArrow(...)             → [FIX] DashedLine(...).add_tip()  — DashedArrow does not exist
 [CRASH] arrow.tip.length = 0.2       → [FIX] use max_tip_length_to_length_ratio param in Arrow()
+[CRASH] eq[0][k] or eq[k] indexing   → [FIX] Use get_part_by_tex(), set_color_by_tex(), or TransformMatchingTex
 [CRASH] obj.tip.length = X           → [FIX] .tip.length is read-only; set tip size in constructor
 
 LAMBDA CLOSURE BUG — MOST COMMON CRASH IN LOOPS:
@@ -417,14 +482,18 @@ QUALITY REQUIREMENTS
 """
 
 
-def generate_manim_code(prompt: str, analysis: dict, plan: str, attempt: int = 1, db=None, segment_durations: dict = None) -> str:
+def generate_manim_code(
+    prompt: str,
+    analysis: dict,
+    plan: str,
+    attempt: int = 1,
+    db=None,
+    segment_durations: dict = None,
+) -> str:
     print(f"[GENERATE] Attempt {attempt}: generating code...")
 
     golden = retrieve_golden_example(
-        analysis["domain"],
-        analysis["topic"],
-        analysis.get("subtopics", []),
-        db=db
+        analysis["domain"], analysis["topic"], analysis.get("subtopics", []), db=db
     )
     error_warnings = get_error_warnings(db)
     domain_guidance = get_domain_specific_guidance(analysis["domain"])
@@ -440,8 +509,8 @@ def generate_manim_code(prompt: str, analysis: dict, plan: str, attempt: int = 1
             "\n\n=== TIMING CONTRACT (MUST FOLLOW — narration audio is pre-recorded) ===\n"
             "Each scene's total animation time (sum of all run_time + wait) MUST equal\n"
             "the specified duration so visuals sync with the voice-over.\n"
-            + "\n".join(timing_lines) +
-            "\nIf a scene's animations are shorter than its duration, pad with self.wait().\n"
+            + "\n".join(timing_lines)
+            + "\nIf a scene's animations are shorter than its duration, pad with self.wait().\n"
             "If longer, compress run_time values proportionally.\n"
         )
 
@@ -467,13 +536,13 @@ Before returning, verify:
  [OK] No SVGMobject, ImageMobject, or emoji
  [OK] Every section cleans up before the next (FadeOut / self.clear() + re-add title)
  [OK] Adequate wait() after each concept reveal
- [OK] Video targets ~{analysis['duration']} seconds total
+ [OK] Video targets ~{analysis["duration"]} seconds total
  [OK] MathTex used for all formulas (not Text)
  [OK] ValueTracker used if showing a changing parameter
 
-Target duration: {analysis['duration']} seconds
-Topic: {analysis['topic']}
-Subtopics: {', '.join(analysis.get('subtopics', []))}
+Target duration: {analysis["duration"]} seconds
+Topic: {analysis["topic"]}
+Subtopics: {", ".join(analysis.get("subtopics", []))}
 
 Return ONLY the complete, runnable Manim Python code. No prose, no explanation."""
 
@@ -563,8 +632,19 @@ RULE 10 — NO SELF.CLEAR(): Replace every self.clear() call with:
   self.play(FadeOut(*self.mobjects))
   This preserves visual continuity instead of abruptly wiping the screen.
 
-RULE 12 — NO MATH INDEXING: Do not use MathTex indexing like eq[0][k].
-  Use get_part_by_tex(), set_color_by_tex(), or TransformMatchingTex.
+RULE 12 — NO MATH INDEXING: Do not use MathTex indexing like eq[0][k] or eq[k].
+  Token positions are UNSTABLE and will cause IndexError at render time.
+  
+  WRONG (will crash):
+    eq = MathTex(r"log_{3}(x)=2")
+    eq[0][4].set_color(YELLOW)  # CRASH RISK
+    ReplacementTransform(eq[0][6].copy(), ...)  # CRASH RISK
+  
+  RIGHT (stable):
+    eq = MathTex(r"log_{3}(x)=2")
+    eq.set_color_by_tex("3", YELLOW)  # Safe
+    part = eq.get_part_by_tex("x")    # Safe
+    self.play(TransformMatchingTex(eq1, eq2))  # Safe morphing
 
 RULE 13 — FAST MODE: In FAST_PIPELINE, avoid always_redraw and TracedPath
   unless explicitly asked.
@@ -578,9 +658,12 @@ def review_and_fix(code: str, prompt: str, analysis: dict) -> str:
         fixed = _llm_text(
             [
                 {"role": "system", "content": REVIEW_SYSTEM},
-                {"role": "user", "content": f"Prompt context: {prompt}\n\nCode to fix:\n{code}"},
+                {
+                    "role": "user",
+                    "content": f"Prompt context: {prompt}\n\nCode to fix:\n{code}",
+                },
             ],
-            model=GENERATION_MODEL,
+            model=FAST_MODEL,  # Use fast model for review - it's just fixing, not generating
         )
         fixed = extract_code(fixed)
         print("[REVIEW] [OK] Review pass complete")
@@ -652,7 +735,6 @@ RULES:
 """
 
 
-
 def fix_render_error(code: str, stderr: str, prompt: str) -> str:
     """
     Feed the Manim stderr back to the LLM for a targeted fix.
@@ -660,7 +742,9 @@ def fix_render_error(code: str, stderr: str, prompt: str) -> str:
     """
     parsed = parse_manim_error(stderr)
     error_summary = format_error_for_prompt(parsed)
-    print(f"[FIX] Runtime error: {parsed['error_type']} — {parsed['error_message'][:80]}")
+    print(
+        f"[FIX] Runtime error: {parsed['error_type']} — {parsed['error_message'][:80]}"
+    )
 
     try:
         fixed = _llm_text(
@@ -675,7 +759,7 @@ def fix_render_error(code: str, stderr: str, prompt: str) -> str:
                     ),
                 },
             ],
-            model=GENERATION_MODEL,
+            model=FAST_MODEL,  # Fast model for targeted error fixes
         )
         fixed = extract_code(fixed)
         print("[FIX] [OK] Error fix applied")
@@ -688,6 +772,7 @@ def fix_render_error(code: str, stderr: str, prompt: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 # UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def extract_code(text: str) -> str:
     """Strip markdown fences and return raw Python."""
@@ -727,7 +812,10 @@ def polish_manim_code(code: str) -> str:
 # EVALUATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def evaluate_with_gpt4(code: str, video_path: str, prompt: str, execution_data: dict) -> dict:
+
+def evaluate_with_gpt4(
+    code: str, video_path: str, prompt: str, execution_data: dict
+) -> dict:
     """
     Score the generated animation based on code quality and execution result.
     Note: we can score code quality statically; actual visual quality requires
@@ -737,9 +825,9 @@ def evaluate_with_gpt4(code: str, video_path: str, prompt: str, execution_data: 
     eval_prompt = f"""Evaluate this Manim animation code.
 
 Request: {prompt}
-Render status: {execution_data['status']}
-Render duration: {execution_data.get('duration', 'N/A')}s
-Errors: {execution_data.get('error', 'None')}
+Render status: {execution_data["status"]}
+Render duration: {execution_data.get("duration", "N/A")}s
+Errors: {execution_data.get("error", "None")}
 
 Code (first 1500 chars):
 ```python
@@ -771,7 +859,10 @@ Respond ONLY with valid JSON (no markdown):
     try:
         raw = _llm_text(
             [
-                {"role": "system", "content": "You are an expert educational video evaluator. Return only JSON."},
+                {
+                    "role": "system",
+                    "content": "You are an expert educational video evaluator. Return only JSON.",
+                },
                 {"role": "user", "content": eval_prompt},
             ],
             model=FAST_MODEL,
@@ -783,7 +874,13 @@ Respond ONLY with valid JSON (no markdown):
 
         # Compute overall if not present
         if "overall" not in evaluation or evaluation["overall"] == 0:
-            dims = ["layout_quality", "educational_value", "technical_accuracy", "pacing", "manim_quality"]
+            dims = [
+                "layout_quality",
+                "educational_value",
+                "technical_accuracy",
+                "pacing",
+                "manim_quality",
+            ]
             vals = [evaluation.get(d, 0) for d in dims]
             evaluation["overall"] = int(sum(vals) / len(vals)) if vals else 0
 

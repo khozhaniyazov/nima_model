@@ -11,6 +11,12 @@ Key improvements vs. original:
   - Clean separation: code generation is synchronous before the async render
 """
 
+import os
+
+# Set defaults before config import
+os.environ.setdefault("DRAFT_PIPELINE", "false")
+os.environ.setdefault("FAST_PIPELINE", "false")
+
 from flask import Flask, render_template, request, send_from_directory, jsonify
 from flask_cors import CORS
 from openai import OpenAI
@@ -29,6 +35,7 @@ import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -42,16 +49,18 @@ from config import (
     MAX_GENERATION_ATTEMPTS,
     ENABLE_VOICEOVER,
     FAST_PIPELINE,
+    DRAFT_PIPELINE,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
 )
 
 # ── Algorithm imports ──────────────────────────────────────────────────────────
 from algorithms.request_analysis import (
-    analyze_request_type, 
+    analyze_request_type,
     create_animation_plan,
     create_narrated_plan,
     create_plan_json,
+    expand_short_prompt,
 )
 from algorithms.tts import generate_voiceover, merge_audio_video
 from algorithms.ai_functions import (
@@ -70,6 +79,7 @@ from algorithms.code_digest import (
     validate_python_syntax,
     validate_manim_code,
     check_code_quality,
+    validate_latex_strings,
 )
 from algorithms.plan.schema import validate_plan_dict
 from algorithms.template_registry import choose_template
@@ -84,11 +94,33 @@ print(f"[STARTUP] Outputs:       {OUTPUTS.absolute()}")
 
 render_status: Dict[str, dict] = {}
 job_to_request: Dict[str, dict] = {}
+_state_lock = threading.Lock()
+
+
+def get_job_status(job_id: str) -> Optional[dict]:
+    with _state_lock:
+        return render_status.get(job_id)
+
+
+def set_job_status(job_id: str, status: dict) -> None:
+    with _state_lock:
+        render_status[job_id] = status
+
+
+def get_job_request(job_id: str) -> Optional[dict]:
+    with _state_lock:
+        return job_to_request.get(job_id)
+
+
+def set_job_request(job_id: str, request: dict) -> None:
+    with _state_lock:
+        job_to_request[job_id] = request
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATABASE
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class ManimDatabase:
     def __init__(self, connection_string: str):
@@ -124,10 +156,16 @@ class ManimDatabase:
             """INSERT INTO requests (id, prompt, user_id, topic, domain, complexity,
                estimated_duration, analysis_json)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (rid, prompt, user_id,
-             analysis.get("topic"), analysis.get("domain"),
-             analysis.get("complexity"), analysis.get("duration"),
-             Json(analysis)),
+            (
+                rid,
+                prompt,
+                user_id,
+                analysis.get("topic"),
+                analysis.get("domain"),
+                analysis.get("complexity"),
+                analysis.get("duration"),
+                Json(analysis),
+            ),
         )
         return rid
 
@@ -141,19 +179,28 @@ class ManimDatabase:
                 syntax_valid, syntax_error, structure_valid,
                 quality_warnings, generation_time_ms)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (aid, request_id, attempt_data["attempt_number"],
-             "gpt-4o", attempt_data.get("plan"), attempt_data["code"],
-             len(attempt_data["code"]), attempt_data.get("critique"),
-             attempt_data.get("improved_code"),
-             attempt_data.get("syntax_valid", True),
-             attempt_data.get("syntax_error"),
-             attempt_data.get("structure_valid", True),
-             Json(attempt_data.get("warnings", [])),
-             attempt_data.get("generation_time_ms", 0)),
+            (
+                aid,
+                request_id,
+                attempt_data["attempt_number"],
+                "gpt-4o",
+                attempt_data.get("plan"),
+                attempt_data["code"],
+                len(attempt_data["code"]),
+                attempt_data.get("critique"),
+                attempt_data.get("improved_code"),
+                attempt_data.get("syntax_valid", True),
+                attempt_data.get("syntax_error"),
+                attempt_data.get("structure_valid", True),
+                Json(attempt_data.get("warnings", [])),
+                attempt_data.get("generation_time_ms", 0),
+            ),
         )
         return aid
 
-    def save_render_job(self, request_id: str, attempt_id: Optional[str], render_data: dict) -> str:
+    def save_render_job(
+        self, request_id: str, attempt_id: Optional[str], render_data: dict
+    ) -> str:
         jid = str(uuid.uuid4())
         self._exec(
             """INSERT INTO render_jobs
@@ -162,13 +209,23 @@ class ManimDatabase:
                 manim_stdout, manim_stderr, return_code, video_path,
                 error_type, error_message)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (jid, request_id, attempt_id, render_data["code"],
-             render_data.get("script_path"), render_data["status"],
-             render_data.get("started_at"), render_data.get("completed_at"),
-             render_data.get("duration"), render_data.get("stdout"),
-             render_data.get("stderr"), render_data.get("return_code"),
-             render_data.get("video_path"), render_data.get("error_type"),
-             render_data.get("error_message")),
+            (
+                jid,
+                request_id,
+                attempt_id,
+                render_data["code"],
+                render_data.get("script_path"),
+                render_data["status"],
+                render_data.get("started_at"),
+                render_data.get("completed_at"),
+                render_data.get("duration"),
+                render_data.get("stdout"),
+                render_data.get("stderr"),
+                render_data.get("return_code"),
+                render_data.get("video_path"),
+                render_data.get("error_type"),
+                render_data.get("error_message"),
+            ),
         )
         return jid
 
@@ -183,14 +240,25 @@ class ManimDatabase:
                 strengths, weaknesses, specific_issues, suggestions,
                 predicted_satisfaction, full_evaluation_json)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (eid, request_id, render_job_id, "gpt-4o-mini",
-             ev.get("visual_quality", 0), ev.get("educational_value", 0),
-             ev.get("technical_accuracy", 0), ev.get("pacing_timing", 0),
-             ev.get("clarity", 0), ev.get("engagement", 0),
-             ev.get("overall", 0), ev.get("strengths"),
-             ev.get("weaknesses"), Json(ev.get("issues", [])),
-             ev.get("suggestions"), ev.get("predicted_satisfaction", 0),
-             Json(ev)),
+            (
+                eid,
+                request_id,
+                render_job_id,
+                "gpt-4o-mini",
+                ev.get("visual_quality", 0),
+                ev.get("educational_value", 0),
+                ev.get("technical_accuracy", 0),
+                ev.get("pacing_timing", 0),
+                ev.get("clarity", 0),
+                ev.get("engagement", 0),
+                ev.get("overall", 0),
+                ev.get("strengths"),
+                ev.get("weaknesses"),
+                Json(ev.get("issues", [])),
+                ev.get("suggestions"),
+                ev.get("predicted_satisfaction", 0),
+                Json(ev),
+            ),
         )
         return eid
 
@@ -209,24 +277,29 @@ class ManimDatabase:
         return self._exec(q, params, fetch="all") or []
 
     def get_error_patterns(self, limit: int = 5) -> list:
-        return self._exec(
-            """SELECT error_category, root_cause, fix_description, occurrence_count
+        return (
+            self._exec(
+                """SELECT error_category, root_cause, fix_description, occurrence_count
                FROM error_patterns
                WHERE NOT resolved
                ORDER BY occurrence_count DESC LIMIT %s""",
-            (limit,), fetch="all"
-        ) or []
+                (limit,),
+                fetch="all",
+            )
+            or []
+        )
 
     def record_error_pattern(self, error_data: dict):
         sig = error_data["signature"]
         existing = self._exec(
             "SELECT id, occurrence_count FROM error_patterns WHERE error_signature = %s",
-            (sig,), fetch="one"
+            (sig,),
+            fetch="one",
         )
         if existing:
             self._exec(
                 "UPDATE error_patterns SET occurrence_count=occurrence_count+1, last_seen=NOW() WHERE id=%s",
-                (existing["id"],)
+                (existing["id"],),
             )
         else:
             self._exec(
@@ -234,10 +307,15 @@ class ManimDatabase:
                    (id, error_category, error_signature, example_error_message,
                     example_code_snippet, root_cause, fix_description)
                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                (str(uuid.uuid4()), error_data["category"], sig,
-                 error_data["message"], error_data.get("code_snippet"),
-                 error_data.get("root_cause", "Unknown"),
-                 error_data.get("fix", "Check syntax and API usage")),
+                (
+                    str(uuid.uuid4()),
+                    error_data["category"],
+                    sig,
+                    error_data["message"],
+                    error_data.get("code_snippet"),
+                    error_data.get("root_cause", "Unknown"),
+                    error_data.get("fix", "Check syntax and API usage"),
+                ),
             )
 
 
@@ -248,30 +326,41 @@ db = ManimDatabase(DB_CONNECTION_STRING) if USE_DATABASE else None
 # CODE GENERATION PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def generate_and_validate_code(
-    prompt: str, job_id: str, max_attempts: int = MAX_GENERATION_ATTEMPTS,
-    voiceover: bool = False
-) -> Tuple[str, list, str, str, dict, list]:
+    prompt: str,
+    job_id: str,
+    max_attempts: int = MAX_GENERATION_ATTEMPTS,
+    voiceover: bool = False,
+) -> Tuple[str, list, str, str, dict, list, bool]:
     """
     Full AI pipeline:
       analyze → plan → [voiceover] → generate → combined review → validate → polish
-    Returns (code, attempts_log, request_id, attempt_id, audio_segments, segment_order).
+    Returns (code, attempts_log, request_id, attempt_id, audio_segments, segment_order, is_fast, analysis).
     """
     attempts_log = []
     request_id = None
-    if FAST_PIPELINE:
+    is_fast = FAST_PIPELINE or DRAFT_PIPELINE
+    if is_fast:
         max_attempts = 1
     audio_segments = {}
     segment_order = []
 
+    prompt = expand_short_prompt(prompt)
+
+    # TIMING: Analysis
+    t0 = time.time()
     render_status[job_id]["message"] = "Analyzing request..."
     analysis = analyze_request_type(prompt)
+    print(f"[TIMING] Analysis: {time.time() - t0:.2f}s")
     attempts_log.append({"stage": "analysis", "data": analysis})
 
     if db and db.available:
         request_id = db.save_request(prompt, analysis)
         print(f"[DB] [OK] Saved request: {request_id}")
 
+    # TIMING: Planning
+    t1 = time.time()
     if voiceover:
         render_status[job_id]["message"] = "Creating narrated timeline..."
         plan = create_narrated_plan(prompt, analysis)
@@ -279,21 +368,23 @@ def generate_and_validate_code(
             parsed = json.loads(plan)
             segments = parsed.get("segments", [])
             segment_order = [s["id"] for s in segments]
-            
+
             render_status[job_id]["message"] = "Generating narration audio..."
             audio_out_dir = OUTPUTS / "audio" / job_id
             audio_segments = generate_voiceover(segments, str(audio_out_dir))
         except Exception as e:
-            print(f"[{job_id}] [ERR] Narration failed: {e}. Falling back to silent plan.")
+            print(
+                f"[{job_id}] [ERR] Narration failed: {e}. Falling back to silent plan."
+            )
             plan = create_animation_plan(prompt, analysis)
             voiceover = False
     else:
         render_status[job_id]["message"] = "Creating animation storyboard..."
         plan = create_animation_plan(prompt, analysis)
-    
-    attempts_log.append({"stage": "planning", "success": True})
 
-    if FAST_PIPELINE and (analysis.get("domain") == "math") and (not voiceover):
+    print(f"[TIMING] Planning: {time.time() - t1:.2f}s")
+
+    if is_fast and (analysis.get("domain") == "math") and (not voiceover):
         try:
             render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
             template_name = choose_template(prompt, analysis.get("domain"))
@@ -307,7 +398,14 @@ def generate_and_validate_code(
             if issues:
                 raise ValueError("; ".join(issues))
             plan_compiled_code = compile_plan(plan_data)
-            attempts_log.append({"stage": "plan_json", "success": True, "template": template_name, "fast": True})
+            attempts_log.append(
+                {
+                    "stage": "plan_json",
+                    "success": True,
+                    "template": template_name,
+                    "fast": True,
+                }
+            )
         except Exception as e:
             print(f"[{job_id}] [PLAN] [ERR] Fast plan compiler fallback: {e}")
             plan_compiled_code = None
@@ -318,17 +416,23 @@ def generate_and_validate_code(
         use_plan_compiler = (analysis.get("domain") == "math") and (not voiceover)
         if use_plan_compiler:
             try:
-                render_status[job_id]["message"] = "Creating plan JSON (deterministic)..."
+                render_status[job_id]["message"] = (
+                    "Creating plan JSON (deterministic)..."
+                )
                 template_name = choose_template(prompt, analysis.get("domain"))
                 if template_name:
                     print(f"[{job_id}] [PLAN] Using template: {template_name}")
-                plan_json = create_plan_json(prompt, analysis, template_name=template_name)
+                plan_json = create_plan_json(
+                    prompt, analysis, template_name=template_name
+                )
                 plan_data = json.loads(plan_json)
                 issues = validate_plan_dict(plan_data)
                 if issues:
                     raise ValueError("; ".join(issues))
                 plan_compiled_code = compile_plan(plan_data)
-                attempts_log.append({"stage": "plan_json", "success": True, "template": template_name})
+                attempts_log.append(
+                    {"stage": "plan_json", "success": True, "template": template_name}
+                )
             except Exception as e:
                 print(f"[{job_id}] [PLAN] [ERR] Plan compiler fallback: {e}")
                 plan_compiled_code = None
@@ -356,71 +460,167 @@ def generate_and_validate_code(
                 else:
                     # Quality warnings (non-blocking)
                     quality_passes, quality_feedback = check_code_quality(code)
-                    attempts_log.append({"stage": "quality", "success": quality_passes, "feedback": quality_feedback})
+                    attempts_log.append(
+                        {
+                            "stage": "quality",
+                            "success": quality_passes,
+                            "feedback": quality_feedback,
+                        }
+                    )
 
-                    # Overlap / scene-hygiene detection (non-blocking here)
-                    render_status[job_id]["message"] = "Checking for layout overlaps..."
-                    overlap_warnings = detect_overlaps(code)
-                    if overlap_warnings:
-                        print(f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected in plan code")
-                        for w in overlap_warnings:
-                            print(f"  {w}")
-                        attempts_log.append({"stage": "overlap_check", "warnings": overlap_warnings})
+                    # Block on critical errors (MathTex indexing, forbidden imports, etc.)
+                    critical_errors = [
+                        w for w in quality_feedback if w.startswith("[ERR]")
+                    ]
+                    if critical_errors:
+                        print(
+                            f"[{job_id}] [QUALITY] Critical errors detected, falling back to LLM path:"
+                        )
+                        for err in critical_errors:
+                            print(f"  {err}")
+                        # Fall through to LLM generation path which can fix these
+                    else:
+                        # Overlap / scene-hygiene detection (non-blocking here)
+                        render_status[job_id]["message"] = (
+                            "Checking for layout overlaps..."
+                        )
+                        overlap_warnings = detect_overlaps(code)
+                        if overlap_warnings:
+                            print(
+                                f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected in plan code"
+                            )
+                            for w in overlap_warnings:
+                                print(f"  {w}")
+                            attempts_log.append(
+                                {"stage": "overlap_check", "warnings": overlap_warnings}
+                            )
 
-                    return code, attempts_log, request_id, None, audio_segments, segment_order
+                        return (
+                            code,
+                            attempts_log,
+                            request_id,
+                            None,
+                            audio_segments,
+                            segment_order,
+                            is_fast,
+                            analysis,
+                        )
 
     for attempt in range(1, max_attempts + 1):
-        print(f"\n[{job_id}] {'='*50}")
+        print(f"\n[{job_id}] {'=' * 50}")
         print(f"[{job_id}] GENERATION ATTEMPT {attempt}/{max_attempts}")
-        print(f"[{job_id}] {'='*50}\n")
+        print(f"[{job_id}] {'=' * 50}\n")
         attempt_start = time.time()
 
+        # TIMING: Code generation
+        t_gen = time.time()
         # 1. Generate
         render_status[job_id]["message"] = f"Generating code (attempt {attempt})..."
         code = generate_manim_code(
-            prompt, analysis, plan, attempt, db=db, 
-            segment_durations=audio_segments if voiceover else None
+            prompt,
+            analysis,
+            plan,
+            attempt,
+            db=db,
+            segment_durations=audio_segments if voiceover else None,
         )
-        attempts_log.append({"attempt": attempt, "stage": "generation", "success": True})
+        print(f"[TIMING] LLM generation: {time.time() - t_gen:.2f}s")
+        attempts_log.append(
+            {"attempt": attempt, "stage": "generation", "success": True}
+        )
 
-        # 2. Combined review (replaces self_critique + overlapping_fix + ai_fix)
-        if not FAST_PIPELINE:
-            render_status[job_id]["message"] = "Reviewing and fixing layout..."
-            code = review_and_fix(code, prompt, analysis)
-            attempts_log.append({"attempt": attempt, "stage": "review", "success": True})
+        # 2. Combined review - check for critical errors
+        # Skip expensive quality checks in FAST/DRAFT_PIPELINE
+        is_fast = FAST_PIPELINE or DRAFT_PIPELINE
+        if is_fast:
+            quality_passes, quality_feedback = True, []
+            has_critical_errors = False
         else:
-            attempts_log.append({"attempt": attempt, "stage": "review", "skipped": True})
+            quality_passes, quality_feedback = check_code_quality(code)
+            has_critical_errors = any(w.startswith("[ERR]") for w in quality_feedback)
 
-        # 3. Security / safety validation (AST-based — runs before syntax check)
-        render_status[job_id]["message"] = "Validating code safety..."
-        is_safe, safety_issues = validate_names_and_imports(code)
-        if not is_safe:
-            print(f"[{job_id}] [SECURITY] Unsafe patterns detected: {safety_issues}")
-            # Feed safety violations into the review pass to auto-fix them
-            safety_note = "\n".join(safety_issues)
-            code = review_and_fix(
-                code,
-                f"{prompt}\n\n[SECURITY VIOLATIONS TO FIX]:\n{safety_note}",
-                analysis
-            )
+        # 2b. LaTeX validation for math domain - skip in FAST/DRAFT_PIPELINE
+        latex_valid, latex_issues = True, []
+        if not is_fast and analysis.get("domain") == "math":
+            latex_valid, latex_issues = validate_latex_strings(code)
+            if not latex_valid:
+                print(f"[{job_id}] [LATEX] LaTeX issues detected: {latex_issues}")
+                latex_note = "\n".join(latex_issues)
+                code = review_and_fix(
+                    code, f"{prompt}\n\n[LATEX ERRORS TO FIX]:\n{latex_note}", analysis
+                )
+                latex_valid, latex_issues = validate_latex_strings(code)
+                if not latex_valid:
+                    has_critical_errors = True
+
+        force_review = has_critical_errors
+
+        # In FAST/DRAFT_PIPELINE, skip review entirely unless there are critical errors
+        if is_fast:
+            if has_critical_errors:
+                render_status[job_id]["message"] = "Fixing critical errors..."
+                error_note = "\n".join(
+                    [w for w in quality_feedback if w.startswith("[ERR]")]
+                )
+                code = review_and_fix(
+                    code,
+                    f"{prompt}\n\n[CRITICAL ERRORS TO FIX]:\n{error_note}",
+                    analysis,
+                )
+            else:
+                attempts_log.append(
+                    {
+                        "attempt": attempt,
+                        "stage": "review",
+                        "skipped": True,
+                        "reason": "fast_pipeline",
+                    }
+                )
+
+        # 3. Security / safety validation - skip in FAST/DRAFT_PIPELINE
+        if not is_fast:
+            render_status[job_id]["message"] = "Validating code safety..."
             is_safe, safety_issues = validate_names_and_imports(code)
-            if not is_safe and attempt < max_attempts:
-                continue
+            if not is_safe:
+                print(
+                    f"[{job_id}] [SECURITY] Unsafe patterns detected: {safety_issues}"
+                )
+                # Feed safety violations into the review pass to auto-fix them
+                safety_note = "\n".join(safety_issues)
+                code = review_and_fix(
+                    code,
+                    f"{prompt}\n\n[SECURITY VIOLATIONS TO FIX]:\n{safety_note}",
+                    analysis,
+                )
+                is_safe, safety_issues = validate_names_and_imports(code)
+                if not is_safe and attempt < max_attempts:
+                    continue
+        else:
+            is_safe, safety_issues = True, []
 
         # 4. Syntax validation
         render_status[job_id]["message"] = "Validating syntax..."
         syntax_valid, syntax_error = validate_python_syntax(code)
         if not syntax_valid:
             print(f"[{job_id}] [ERR] Syntax error: {syntax_error}")
-            attempts_log.append({"attempt": attempt, "stage": "syntax", "success": False, "error": syntax_error})
+            attempts_log.append(
+                {
+                    "attempt": attempt,
+                    "stage": "syntax",
+                    "success": False,
+                    "error": syntax_error,
+                }
+            )
             if db and db.available:
-                db.record_error_pattern({
-                    "category": "syntax",
-                    "signature": str(hash(syntax_error)),
-                    "message": syntax_error,
-                    "code_snippet": code[:200],
-                })
-            if not FAST_PIPELINE:
+                db.record_error_pattern(
+                    {
+                        "category": "syntax",
+                        "signature": str(hash(syntax_error)),
+                        "message": syntax_error,
+                        "code_snippet": code[:200],
+                    }
+                )
+            if not is_fast:
                 code = polish_manim_code(code)
                 syntax_valid, syntax_error = validate_python_syntax(code)
                 if not syntax_valid:
@@ -439,63 +639,99 @@ def generate_and_validate_code(
         structure_valid, structure_error = validate_manim_code(code)
         if not structure_valid:
             if attempt < max_attempts:
-                if not FAST_PIPELINE:
+                if not is_fast:
                     code = polish_manim_code(code)
                 continue
             raise Exception(f"Structure error: {structure_error}")
 
         attempts_log.append({"attempt": attempt, "stage": "structure", "success": True})
 
-        # 5. Quality warnings (non-blocking)
-        quality_passes, quality_feedback = check_code_quality(code)
-        attempts_log.append({"attempt": attempt, "stage": "quality", "success": quality_passes, "feedback": quality_feedback})
+        # 5. Quality warnings (non-blocking) - skip in FAST/DRAFT_PIPELINE
+        if not is_fast:
+            quality_passes, quality_feedback = check_code_quality(code)
+            attempts_log.append(
+                {
+                    "attempt": attempt,
+                    "stage": "quality",
+                    "success": quality_passes,
+                    "feedback": quality_feedback,
+                }
+            )
+        else:
+            quality_passes, quality_feedback = True, []
 
-        # 6. Overlap / scene-hygiene detection
-        render_status[job_id]["message"] = "Checking for layout overlaps..."
-        overlap_warnings = detect_overlaps(code)
-        if overlap_warnings:
-            print(f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected")
-            for w in overlap_warnings:
-                print(f"  {w}")
-            if not FAST_PIPELINE:
+        # 6. Overlap detection - skip in FAST/DRAFT_PIPELINE
+        if not is_fast:
+            render_status[job_id]["message"] = "Checking for layout overlaps..."
+            overlap_warnings = detect_overlaps(code)
+            if overlap_warnings:
+                print(f"[{job_id}] [OVERLAP] {len(overlap_warnings)} issues detected")
+                for w in overlap_warnings:
+                    print(f"  {w}")
                 # Feed overlap warnings back to review for a targeted fix
                 overlap_note = "\n".join(overlap_warnings)
                 code = review_and_fix(
                     code,
                     f"{prompt}\n\n[LAYOUT OVERLAP ISSUES TO FIX]:\n{overlap_note}",
-                    analysis
+                    analysis,
                 )
                 code = ensure_scene_class(code)
                 # Re-check (don't loop — one repair pass is enough)
                 remaining = detect_overlaps(code)
                 if remaining:
-                    print(f"[{job_id}] [OVERLAP] {len(remaining)} issues remain after fix attempt")
+                    print(
+                        f"[{job_id}] [OVERLAP] {len(remaining)} issues remain after fix attempt"
+                    )
                     quality_feedback.extend(remaining)
                 else:
                     print(f"[{job_id}] [OVERLAP] All issues resolved")
-            else:
-                remaining = overlap_warnings
 
-            attempts_log.append({"attempt": attempt, "stage": "overlap_fix", "warnings": overlap_warnings, "remaining": len(remaining) if remaining else 0})
+            attempts_log.append(
+                {
+                    "attempt": attempt,
+                    "stage": "overlap_fix",
+                    "warnings": overlap_warnings,
+                    "remaining": len(overlap_warnings) if overlap_warnings else 0,
+                }
+            )
+        else:
+            # FAST/DRAFT_PIPELINE: skip overlap detection
+            overlap_warnings = []
+            attempts_log.append(
+                {"attempt": attempt, "stage": "overlap_fix", "skipped": True}
+            )
 
         attempt_time = int((time.time() - attempt_start) * 1000)
         attempt_id = None
         if db and db.available and request_id:
-            attempt_id = db.save_generation_attempt(request_id, {
-                "attempt_number": attempt,
-                "plan": plan,
-                "code": code,
-                "critique": "",
-                "improved_code": code,
-                "syntax_valid": syntax_valid,
-                "syntax_error": None,
-                "structure_valid": structure_valid,
-                "warnings": quality_feedback,
-                "generation_time_ms": attempt_time,
-            })
+            attempt_id = db.save_generation_attempt(
+                request_id,
+                {
+                    "attempt_number": attempt,
+                    "plan": plan,
+                    "code": code,
+                    "critique": "",
+                    "improved_code": code,
+                    "syntax_valid": syntax_valid,
+                    "syntax_error": None,
+                    "structure_valid": structure_valid,
+                    "warnings": quality_feedback,
+                    "generation_time_ms": attempt_time,
+                },
+            )
             print(f"[DB] [OK] Saved attempt: {attempt_id}")
 
-        return code, attempts_log, request_id, attempt_id, audio_segments, segment_order
+        print(f"[TIMING] Total code generation: {time.time() - t0:.2f}s")
+        return (
+            code,
+            attempts_log,
+            request_id,
+            attempt_id,
+            audio_segments,
+            segment_order,
+            is_fast,
+            analysis,
+        )
 
     raise Exception("All generation attempts failed.")
 
@@ -503,6 +739,7 @@ def generate_and_validate_code(
 # ═══════════════════════════════════════════════════════════════════════════════
 # RENDER WITH SELF-HEALING RETRY LOOP
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def find_video_file(filename: str) -> Optional[Path]:
     """Search for the rendered video file in common output locations."""
@@ -521,12 +758,17 @@ def find_video_file(filename: str) -> Optional[Path]:
             return p
 
     # Glob fallback - exact match prefix to avoid stale files
+    now = time.time()
     for mp4 in OUTPUTS.rglob(f"{filename}*.mp4"):
-        return mp4
+        # Reject files older than 5 minutes as stale
+        if now - mp4.stat().st_mtime < 300:
+            return mp4
     return None
 
 
-def _run_manim(code: str, filename: str, job_id: str) -> subprocess.CompletedProcess:
+def _run_manim(
+    code: str, filename: str, job_id: str, is_fast: bool = False
+) -> subprocess.CompletedProcess:
     """Write the script and run manim. Returns the CompletedProcess."""
     script_path = MANIM_SCRIPTS / f"{filename}.py"
     with open(script_path, "w", encoding="utf-8", errors="replace") as f:
@@ -539,19 +781,52 @@ def _run_manim(code: str, filename: str, job_id: str) -> subprocess.CompletedPro
         except OSError:
             pass
 
+    # Build render command based on pipeline mode
+    if DRAFT_PIPELINE:
+        # Ultra-fast draft mode: lowest quality, smallest output
+        quality_flag = "-qk"  # Keep edges (lowest)
+        fps = "10"
+        verbosity = "--verbose=ERROR"
+    elif is_fast:
+        quality_flag = "-ql"  # Low quality
+        fps = "15"
+        verbosity = "--verbose=WARNING"
+    else:
+        quality_flag = "-ql"  # Default to low for speed
+        fps = "30"
+        verbosity = "--verbose=INFO"
+
     cmd = [
-        "manim", str(script_path), "GeneratedScene",
-        "-ql", "--format=mp4",
-        "--media_dir", str(OUTPUTS),
-        "--output_file", f"{filename}.mp4",
+        "manim",
+        str(script_path),
+        "GeneratedScene",
+        quality_flag,
+        "--format=mp4",
+        "--media_dir",
+        str(OUTPUTS),
+        "--output_file",
+        f"{filename}.mp4",
+        "--disable_caching",
+        "--fps",
+        fps,
+        verbosity,
     ]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=RENDER_TIMEOUT_SECONDS)
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=RENDER_TIMEOUT_SECONDS
+    )
 
 
 def save_and_render(
-    code: str, filename: str, job_id: str,
-    request_id: str = None, prompt: str = "", attempt_id: str = None,
-    audio_segments: dict = None, segment_order: list = None,
+    code: str,
+    filename: str,
+    job_id: str,
+    request_id: str = None,
+    prompt: str = "",
+    attempt_id: str = None,
+    audio_segments: dict = None,
+    segment_order: list = None,
+    is_fast: bool = False,
+    analysis: dict = None,
 ):
     """
     Render pipeline with self-healing retry loop.
@@ -565,15 +840,18 @@ def save_and_render(
     current_code = code
     render_job_id = None
 
-    render_retries = 1 if FAST_PIPELINE else MAX_RENDER_RETRIES
+    render_retries = 1 if is_fast else MAX_RENDER_RETRIES
 
     for render_attempt in range(1, render_retries + 1):
         print(f"[{job_id}] Render attempt {render_attempt}/{MAX_RENDER_RETRIES}")
         started_at = datetime.now()
 
+        # TIMING: Manim render
+        t_render = time.time()
         try:
-            result = _run_manim(current_code, filename, job_id)
+            result = _run_manim(current_code, filename, job_id, is_fast=is_fast)
             render_duration = int((datetime.now() - started_at).total_seconds())
+            print(f"[TIMING] Manim render: {time.time() - t_render:.2f}s")
 
             render_data = {
                 "code": current_code,
@@ -590,13 +868,23 @@ def save_and_render(
             # for non-error warnings (e.g. cache full) even on success.
             video_path = find_video_file(filename)
 
+            # Race condition fix: poll if returncode=0 but file not found yet
+            if not video_path and result.returncode == 0:
+                for poll_attempt in range(3):
+                    time.sleep(1)
+                    video_path = find_video_file(filename)
+                    if video_path:
+                        break
+
             if video_path:
                 # ── SUCCESS (video produced) ─────────────────────────────────
                 if result.returncode != 0:
-                    print(f"[{job_id}] [WARN] Manim exited with code {result.returncode} but video was produced — treating as success")
-                
+                    print(
+                        f"[{job_id}] [WARN] Manim exited with code {result.returncode} but video was produced — treating as success"
+                    )
+
                 final_video_path = str(video_path)
-                
+
                 if audio_segments and segment_order:
                     render_status[job_id]["message"] = "Merging audio and video..."
                     print(f"[{job_id}] Merging audio + video...")
@@ -613,17 +901,24 @@ def save_and_render(
                 print(f"[{job_id}] [OK] SUCCESS — {final_video_path}")
 
                 if db and db.available and request_id:
-                    render_job_id = db.save_render_job(request_id, attempt_id, render_data)
+                    render_job_id = db.save_render_job(
+                        request_id, attempt_id, render_data
+                    )
                     print(f"[DB] [OK] Saved render job: {render_job_id}")
 
                 # Evaluate quality
-                if not FAST_PIPELINE:
+                if not is_fast:
                     render_status[job_id]["message"] = "Evaluating quality..."
-                    evaluation = evaluate_with_gpt4(current_code, str(video_path), prompt, {
-                        "status": "done",
-                        "duration": render_duration,
-                        "error": None,
-                    })
+                    evaluation = evaluate_with_gpt4(
+                        current_code,
+                        str(video_path),
+                        prompt,
+                        {
+                            "status": "done",
+                            "duration": render_duration,
+                            "error": None,
+                        },
+                    )
                     if db and db.available and request_id and render_job_id:
                         db.save_ai_evaluation(request_id, render_job_id, evaluation)
                         score = evaluation.get("overall", 0)
@@ -634,11 +929,13 @@ def save_and_render(
                     print(f"[{job_id}] [FAST] Skipping evaluation")
                 return  # done
 
-            elif result.returncode == 0:
-                # ── returncode=0 but file not found ──────────────────────────
+            elif result.returncode == 0 and not video_path:
+                # ── returncode=0 but file not found (after polling) ───────────
                 render_data["status"] = "error"
-                render_data["error_type"] = "file_not_found"
-                render_data["error_message"] = "Video file not found after render"
+                render_data["error_type"] = "file_not_found_after_retry"
+                render_data["error_message"] = (
+                    "Video file not found after render and poll retry"
+                )
                 render_status[job_id]["status"] = "error"
                 render_status[job_id]["message"] = "Video file not found"
                 if db and db.available and request_id:
@@ -652,23 +949,72 @@ def save_and_render(
                 print(f"[{job_id}] stderr (last 800 chars): {stderr[-800:]}")
 
                 if db and db.available:
-                    db.record_error_pattern({
-                        "category": "runtime",
-                        "signature": str(hash(stderr[-500:])),
-                        "message": stderr[-500:],
-                        "code_snippet": current_code[:200],
-                        "root_cause": "Manim runtime error",
-                        "fix": "Feed error back to LLM for targeted fix",
-                    })
+                    try:
+                        db.record_error_pattern(
+                            {
+                                "category": "runtime",
+                                "signature": str(hash(stderr[-500:])),
+                                "message": stderr[-500:],
+                                "code_snippet": current_code[:200],
+                                "root_cause": "Manim runtime error",
+                                "fix": "Feed error back to LLM for targeted fix",
+                            }
+                        )
+                    except Exception as e:
+                        print(
+                            f"[{job_id}] [DB] [ERR] Failed to record error pattern: {e}",
+                            flush=True,
+                        )
+                else:
+                    print(
+                        f"[{job_id}] [DB] [WARN] Database unavailable — error pattern not recorded",
+                        flush=True,
+                    )
 
                 if render_attempt < render_retries:
-                    render_status[job_id]["message"] = f"Fixing render error (attempt {render_attempt})..."
+                    render_status[job_id]["message"] = (
+                        f"Fixing render error (attempt {render_attempt})..."
+                    )
                     print(f"[{job_id}] → Feeding error to LLM for fix...")
                     current_code = fix_render_error(current_code, stderr, prompt)
-                    # Re-validate syntax before retrying
+
+                    # Post-fix validation: ensure the LLM fix didn't break safety or structure
+                    is_safe, safety_issues = validate_names_and_imports(current_code)
+                    if not is_safe:
+                        print(
+                            f"[{job_id}] [WARN] Post-fix safety check failed: {safety_issues}"
+                        )
+                        from algorithms.ai_functions import polish_manim_code as _polish
+
+                        current_code = _polish(current_code)
+                        is_safe, safety_issues = validate_names_and_imports(
+                            current_code
+                        )
+                        if not is_safe:
+                            print(
+                                f"[{job_id}] [ERR] Safety issues persist after polish: {safety_issues}"
+                            )
+
+                    structure_valid, structure_error = validate_manim_code(current_code)
+                    if not structure_valid:
+                        print(
+                            f"[{job_id}] [WARN] Post-fix structure check failed: {structure_error}"
+                        )
+                        current_code = ensure_scene_class(current_code)
+
+                    # Math domain: re-validate LaTeX after fix
+                    if analysis and analysis.get("domain") == "math" and not is_fast:
+                        latex_valid, latex_issues = validate_latex_strings(current_code)
+                        if not latex_valid:
+                            print(
+                                f"[{job_id}] [WARN] Post-fix LaTeX check failed: {latex_issues}"
+                            )
+
+                    # Syntax check (existing)
                     syn_ok, _ = validate_python_syntax(current_code)
                     if not syn_ok:
                         from algorithms.ai_functions import polish_manim_code as _polish
+
                         current_code = _polish(current_code)
                     current_code = ensure_scene_class(current_code)
                 else:
@@ -695,13 +1041,31 @@ def save_and_render(
 
 
 def render_async(
-    code: str, filename: str, job_id: str,
-    request_id: str = None, prompt: str = "", attempt_id: str = None,
-    audio_segments: dict = None, segment_order: list = None,
+    code: str,
+    filename: str,
+    job_id: str,
+    request_id: str = None,
+    prompt: str = "",
+    attempt_id: str = None,
+    audio_segments: dict = None,
+    segment_order: list = None,
+    is_fast: bool = False,
+    analysis: dict = None,
 ):
     t = threading.Thread(
         target=save_and_render,
-        args=(code, filename, job_id, request_id, prompt, attempt_id, audio_segments, segment_order),
+        args=(
+            code,
+            filename,
+            job_id,
+            request_id,
+            prompt,
+            attempt_id,
+            audio_segments,
+            segment_order,
+            is_fast,
+            analysis,
+        ),
         daemon=True,
     )
     t.start()
@@ -712,7 +1076,12 @@ def render_async(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 app = Flask(__name__)
-CORS(app)
+CORS(
+    app,
+    origins=["http://localhost:3000"],
+    methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -731,28 +1100,58 @@ def index():
             filename = f"video_{job_id}"
 
             safe_prompt = prompt.encode("ascii", "ignore").decode()
-            print(f"\n{'#'*60}")
+            print(f"\n{'#' * 60}")
             print(f"[{job_id}] NEW REQUEST: {safe_prompt}")
-            print(f"{'#'*60}\n")
+            print(f"{'#' * 60}\n")
 
-            render_status[job_id] = {
-                "status": "generating",
-                "message": "Analyzing and planning...",
-                "video_file": "",
-            }
-
-            code, attempts_log, request_id, attempt_id, a_segs, a_order = generate_and_validate_code(
-                prompt, job_id, max_attempts=MAX_GENERATION_ATTEMPTS, voiceover=ENABLE_VOICEOVER
+            set_job_status(
+                job_id,
+                {
+                    "status": "generating",
+                    "message": "Analyzing and planning...",
+                    "video_file": "",
+                },
             )
 
-            job_to_request[job_id] = {"request_id": request_id, "prompt": prompt}
-            render_async(code, filename, job_id, request_id, prompt, attempt_id, a_segs, a_order)
+            (
+                code,
+                attempts_log,
+                request_id,
+                attempt_id,
+                a_segs,
+                a_order,
+                is_fast,
+                analysis,
+            ) = generate_and_validate_code(
+                prompt,
+                job_id,
+                max_attempts=MAX_GENERATION_ATTEMPTS,
+                voiceover=ENABLE_VOICEOVER,
+            )
+
+            set_job_request(job_id, {"request_id": request_id, "prompt": prompt})
+            render_async(
+                code,
+                filename,
+                job_id,
+                request_id,
+                prompt,
+                attempt_id,
+                a_segs,
+                a_order,
+                is_fast,
+                analysis,
+            )
 
         except Exception as e:
             error = f"Error: {str(e)}"
             print(f"[{job_id}] [ERR] ERROR: {error}")
             if job_id:
-                render_status[job_id] = {"status": "error", "message": error, "video_file": ""}
+                render_status[job_id] = {
+                    "status": "error",
+                    "message": error,
+                    "video_file": "",
+                }
             time.sleep(2)
 
     return render_template("index.html", job_id=job_id, error=error)
@@ -760,7 +1159,9 @@ def index():
 
 @app.route("/status/<job_id>")
 def check_status(job_id):
-    status = render_status.get(job_id, {"status": "unknown", "message": "Job not found"})
+    status = render_status.get(
+        job_id, {"status": "unknown", "message": "Job not found"}
+    )
     return jsonify(status)
 
 
@@ -779,9 +1180,9 @@ def api_generate():
         filename = f"video_{job_id}"
 
         safe_prompt = prompt.encode("ascii", "ignore").decode()
-        print(f"\n{'#'*60}")
+        print(f"\n{'#' * 60}")
         print(f"[{job_id}] NEW REQUEST (API) Voiceover={use_voiceover}: {safe_prompt}")
-        print(f"{'#'*60}\n")
+        print(f"{'#' * 60}\n")
 
         render_status[job_id] = {
             "status": "generating",
@@ -791,14 +1192,41 @@ def api_generate():
 
         def background_generate():
             try:
-                code, attempts_log, req_id, att_id, a_segs, a_order = generate_and_validate_code(
-                    prompt, job_id, max_attempts=MAX_GENERATION_ATTEMPTS, voiceover=use_voiceover
+                (
+                    code,
+                    attempts_log,
+                    req_id,
+                    att_id,
+                    a_segs,
+                    a_order,
+                    is_fast,
+                    analysis,
+                ) = generate_and_validate_code(
+                    prompt,
+                    job_id,
+                    max_attempts=MAX_GENERATION_ATTEMPTS,
+                    voiceover=use_voiceover,
                 )
                 job_to_request[job_id] = {"request_id": req_id, "prompt": prompt}
-                render_async(code, filename, job_id, req_id, prompt, att_id, a_segs, a_order)
+                render_async(
+                    code,
+                    filename,
+                    job_id,
+                    req_id,
+                    prompt,
+                    att_id,
+                    a_segs,
+                    a_order,
+                    is_fast,
+                    analysis,
+                )
             except Exception as e:
                 print(f"[{job_id}] [ERR] ERROR in background generation: {e}")
-                render_status[job_id] = {"status": "error", "message": str(e), "video_file": ""}
+                render_status[job_id] = {
+                    "status": "error",
+                    "message": str(e),
+                    "video_file": "",
+                }
 
         t = threading.Thread(target=background_generate, daemon=True)
         t.start()
@@ -814,8 +1242,9 @@ def api_prompts():
     """Returns random example prompts."""
     try:
         from training.questions import questions
-        n = request.args.get('n', 4, type=int)
-        
+
+        n = request.args.get("n", 4, type=int)
+
         # Don't fail if we request more than available
         k = min(n, len(questions))
         selected = random.sample(questions, k=k)
@@ -859,23 +1288,64 @@ def stats():
             """)
             domains = [dict(r) for r in cur.fetchall()]
 
-        return jsonify({"stats": stats_data, "top_domains": domains, "database_enabled": True})
+        return jsonify(
+            {"stats": stats_data, "top_domains": domains, "database_enabled": True}
+        )
     except Exception as e:
         return jsonify({"error": str(e)})
 
 
 @app.route("/health")
 def health():
-    return jsonify({
-        "status": "ok",
-        "database": db.available if db else False,
-        "active_jobs": len([s for s in render_status.values() if s.get("status") in ("generating", "rendering")]),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "database": db.available if db else False,
+            "active_jobs": len(
+                [
+                    s
+                    for s in render_status.values()
+                    if s.get("status") in ("generating", "rendering")
+                ]
+            ),
+        }
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STARTUP
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+def prewarm_manim():
+    """Warm up Manim by rendering a minimal scene."""
+    try:
+        if DRAFT_PIPELINE:
+            print("[WARMUP] Skipping manim warmup in DRAFT mode")
+            return
+
+        import tempfile
+
+        warmup_code = """from manim import *
+class WarmupScene(Scene):
+    def construct(self):
+        circle = Circle()
+        self.play(Create(circle))
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(warmup_code)
+            warmup_path = f.name
+
+        print("[WARMUP] Pre-warming Manim (first render is slow)...")
+        result = subprocess.run(
+            ["manim", warmup_path, "WarmupScene", "-ql", "--disable_caching"],
+            capture_output=True,
+            timeout=120,
+        )
+        print(f"[WARMUP] {'OK' if result.returncode == 0 else 'FAILED'}")
+    except Exception as e:
+        print(f"[WARMUP] [ERR] Manim warmup failed: {e}", flush=True)
+
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
@@ -884,12 +1354,36 @@ if __name__ == "__main__":
     print(f"[OK] Model: {__import__('config').GENERATION_MODEL}")
     print(f"[OK] Fast model: {__import__('config').FAST_MODEL}")
     print(f"[OK] Database: {'ENABLED' if USE_DATABASE else 'DISABLED'}")
-    print(f"[OK] Render retries: {MAX_RENDER_RETRIES} (with LLM error-fix between each)")
+    print(
+        f"[OK] Render retries: {MAX_RENDER_RETRIES} (with LLM error-fix between each)"
+    )
+    print(
+        f"[OK] Pipeline: {'DRAFT' if DRAFT_PIPELINE else ('FAST' if FAST_PIPELINE else 'FULL')}"
+    )
     print(f"[OK] RAG corpus: 25+ curated patterns")
     print(f"[OK] Review pass: consolidated (layout + API + pacing)")
+
+    # Pre-warm in background
+    import threading
+
+    warmup_thread = threading.Thread(target=prewarm_manim, daemon=True)
+    warmup_thread.start()
+
+    def _check_warmup():
+        warmup_thread.join(timeout=30)
+        if warmup_thread.is_alive():
+            print(
+                "[WARMUP] [WARN] Manim warmup did not complete within 30s — first render will pay cold-start cost",
+                flush=True,
+            )
+        else:
+            print("[WARMUP] [OK] Manim warmup completed", flush=True)
+
+    threading.Thread(target=_check_warmup, daemon=True).start()
+
     print("=" * 60)
     print("http://localhost:5000")
     print("Stats: http://localhost:5000/stats")
     print("=" * 60 + "\n")
 
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True, use_reloader=False)
+    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True, use_reloader=False)
