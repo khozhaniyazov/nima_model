@@ -6,116 +6,136 @@
 
 **AI Code Generation:**
 - OpenAI API - Primary LLM for code generation
-  - SDK: `openai>=1.30`
-  - Auth: `OPENAI_API_KEY` env var
-  - Models: `gpt-5.2-codex` (generation), `gpt-4o-mini` (fallback), `gpt-4o-mini-tts` (TTS)
-  - Base URL: `OPENAI_BASE_URL` env var (custom endpoint support)
+  - SDK: `openai` Python package
+  - Models: `gpt-5.2-codex` (generation), `gpt-4o-mini` (fallback), `gpt-4o` (evaluation)
+  - Auth: `OPENAI_API_KEY` environment variable
+  - Base URL: `OPENAI_BASE_URL` (supports custom endpoints like OpenRouter)
 
-**TTS/Voiceover:**
-- OpenAI TTS - Text-to-speech for voiceover generation
+**Text-to-Speech:**
+- OpenAI TTS API - Voiceover narration generation
+  - SDK: `openai.audio.speech.create()`
   - Model: `gpt-4o-mini-tts`
-  - Voice: `alloy` (configurable via `TTS_VOICE`)
+  - Voice: `alloy` (configurable: ash/coral/echo/fable/nova/onyx/sage/shimmer)
+  - Auth: Same `OPENAI_API_KEY`
 
-**Animation Rendering:**
-- Manim - Mathematical animation engine
-  - Package: `manim>=0.18`
-  - Execution: Subprocess calls to `manim` CLI
-  - Output: MP4 video files
+**AI Evaluation (Skills/MCP):**
+- Anthropic API - Alternative AI for evaluation tasks
+  - SDK: `anthropic` Python package
+  - Used in: `skills/mcp-builder/scripts/evaluation.py`
+  - Auth: `ANTHROPIC_API_KEY` (inferred from usage)
+
+**RAG System:**
+- Local file-based RAG - Curated Manim pattern corpus
+  - Location: `RAG/RAG_system.py`
+  - No external API - uses local JSON corpus of ~30 proven Manim patterns
 
 ## Data Storage
 
 **PostgreSQL Database:**
-- Type: Relational database (PostgreSQL)
-- Client: `psycopg2-binary>=2.9`
-- Connection: `DB_CONNECTION_STRING` env var
-  - Default: `postgresql://postgres:***@localhost:5432/manim_db`
-- Feature flag: `USE_DATABASE` env var (default: true)
+- Type: PostgreSQL (local or hosted)
+- Connection: `postgresql://postgres:***@localhost:5432/manim_db`
+- Client: `psycopg2` Python package
+- Schema: `database_schema.sql`
 
-**Database Tables (via `ManimDatabase` class in `app.py`):**
-- `requests` - User prompts and analysis
-- `generation_attempts` - Code generation attempts
-- `render_jobs` - Manim render jobs
-- `ai_evaluations` - Quality evaluations
-- `error_patterns` - Known error signatures
+**Tables:**
+- `requests` - User animation requests with analysis metadata
+- `generation_attempts` - Code generation attempts per request
+- `render_jobs` - Manim render job status and outputs
+- `ai_evaluations` - Quality evaluation scores per render
+- `error_patterns` - Known error signatures for retry optimization
+- `training_examples` - High-quality examples for training
 
 **File Storage:**
-- Local filesystem
-  - Scripts: `C:/temp/manim_scripts/` (configurable via `MANIM_SCRIPTS`)
-  - Outputs: `C:/temp/outputs/` (configurable via `OUTPUTS`)
-- No cloud storage integration detected
+- Local filesystem - `C:/temp/outputs/` for rendered videos
+- Local filesystem - `C:/temp/manim_scripts/` for generated Python scripts
+- Local filesystem - `C:/temp/outputs/audio/{job_id}/` for TTS audio segments
 
 **Caching:**
-- None detected (Manim caching disabled via `--disable_caching` flag)
+- Manim cache disabled (`--disable_caching` flag) for fresh renders
 
 ## Authentication & Identity
 
-**No external authentication provider detected**
-- API is publicly accessible (Flask default)
-- No JWT, OAuth, or session authentication
-- No user identity tracking (user_id fields are nullable)
+**Auth Provider:**
+- None implemented - System is open to all users
+- No user authentication or authorization layer
+
+**API Security:**
+- CORS enabled on Flask backend (`flask_cors`)
+- Frontend communicates with backend via `http://localhost:5000`
+- No API key or token authentication on Flask endpoints
 
 ## Monitoring & Observability
 
+**Logging:**
+- Python `print()` statements to stdout/stderr
+- Log files: `manim_generator.log`, `flask.log` (rotated/archived)
+- No structured logging framework (logging module available but not used)
+
 **Error Tracking:**
-- None detected
-- No Sentry, Rollbar, or similar services configured
+- Custom error pattern recording in `error_patterns` table
+- Render error self-healing with LLM feedback loop
+- Database tracks: `error_category`, `error_signature`, `root_cause`, `fix_description`
 
-**Logs:**
-- Console/stdout logging via `print()` statements
-- Log levels: `INFO`, `WARN`, `ERR`, `DEBUG` via bracket prefixes
-- Example: `[DB] [OK]`, `[TIMING]`, `[STARTUP]`
+**Metrics:**
+- `/stats` endpoint returns aggregate metrics:
+  - `total_requests` - All requests count
+  - `successful_renders` - Done renders count
+  - `avg_quality_score` - Average AI evaluation score
+  - `unique_error_patterns` - Distinct error types
+  - `top_domains` - Most common animation domains
 
-**Quality Evaluation:**
-- OpenAI-based quality scoring (`evaluate_with_gpt4` function)
-- Stored in `ai_evaluations` table
+**Health Check:**
+- `/health` endpoint - Returns database availability and active job count
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Not detected
-- No cloud hosting configuration found
-- Local development server: `flask run` on port 5000
-- Frontend dev server: `next dev` on default Next.js port
+- Self-hosted on localhost (development)
+- Flask app.run on `0.0.0.0:5000`
+- No containerization (Dockerfile not present)
 
 **CI Pipeline:**
-- None detected
-- No GitHub Actions, Travis, CircleCI, or similar configs found
+- GitHub Actions - `.github/workflows/test.yml`
+- Runs on: Ubuntu latest
+- Python version: 3.11
 
-**Deployment:**
-- Manual deployment via Flask WSGI server
-- Next.js can be deployed to Vercel or similar
+**Pipeline Steps:**
+1. **Test job** - Runs `test_imports.py`, `test_optimizations.py`, `benchmark.py`
+2. **Lint job** - Runs `ruff check`, `black --check`
+3. **Pipeline modes job** - Tests DRAFT, FAST, FULL modes
+4. **Benchmark comparison** - Manual workflow dispatch for PR comparison
 
 ## Environment Configuration
 
 **Required env vars:**
-- `OPENAI_API_KEY` - OpenAI authentication (critical)
-- `OPENAI_BASE_URL` - API endpoint (optional, defaults to OpenAI)
-- `DB_CONNECTION_STRING` - PostgreSQL connection string
-
-**Optional env vars:**
-- `GENERATION_MODEL` - Primary code generation model (default: gpt-5.2-codex)
-- `FAST_MODEL` - Light model for analysis (default: gpt-5.2-codex)
-- `USE_DATABASE` - Enable/disable DB (default: true)
-- `FAST_PIPELINE` - Fast mode (default: false)
-- `DRAFT_PIPELINE` - Ultra-fast preview (default: false)
-- `ENABLE_VOICEOVER` - TTS generation (default: true)
-- `TTS_MODEL` / `TTS_VOICE` - Voice settings
-- `MAX_RENDER_RETRIES` / `MAX_GENERATION_ATTEMPTS` - Retry limits
-- `RENDER_TIMEOUT_SECONDS` - Render timeout (default: 900)
+- `OPENAI_API_KEY` - OpenAI API authentication
+- `OPENAI_BASE_URL` - (optional) Custom API endpoint
+- `DB_CONNECTION_STRING` - PostgreSQL connection
+- `GENERATION_MODEL` - (optional) Override default gpt-5.2-codex
+- `FAST_MODEL` - (optional) Override default gpt-5.2-codex
+- `USE_DATABASE` - (optional) true/false, default true
+- `FAST_PIPELINE` - (optional) true/false, default false
+- `DRAFT_PIPELINE` - (optional) true/false, default false
+- `ENABLE_VOICEOVER` - (optional) true/false, default true
+- `TTS_MODEL` - (optional) Override TTS model
+- `TTS_VOICE` - (optional) Override voice preset
 
 **Secrets location:**
-- `.env` file at project root (NOT committed - should be in .gitignore)
-- Config loaded via `python-dotenv`
+- `.env` file at project root (contains `OPENAI_API_KEY`, `DB_CONNECTION_STRING`)
+- `.env` is in `.gitignore` - never committed
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None detected
-- No webhook endpoints configured
+- None - Flask API accepts direct POST requests
 
 **Outgoing:**
-- OpenAI API calls (upstream)
-- Manim CLI subprocess execution (local)
+- None - No outbound webhooks or callback integrations
+
+**Frontend-Backend Communication:**
+- REST polling - Frontend polls `/status/{job_id}` every 1.5 seconds
+- JSON API - `/api/generate` for job creation, `/api/prompts` for example prompts
+- Video delivery - `/outputs/{filename}` endpoint for rendered MP4 downloads
 
 ---
 

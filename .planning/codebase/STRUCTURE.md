@@ -10,7 +10,6 @@ C:\ai-manim\
 ├── config.py                    # Centralized configuration
 ├── requirements.txt             # Python dependencies
 ├── database_schema.sql          # PostgreSQL schema
-│
 ├── nima-frontend/               # Next.js frontend application
 │   ├── package.json
 │   ├── next.config.ts
@@ -21,41 +20,37 @@ C:\ai-manim\
 │           ├── layout.tsx       # Root layout with metadata
 │           ├── globals.css      # Tailwind + custom CSS
 │           └── favicon.ico
-│
 ├── algorithms/                   # AI pipeline modules
 │   ├── __init__.py
 │   ├── request_analysis.py      # Prompt classification & planning
-│   ├── ai_functions.py          # LLM generation, review, fix, evaluate
-│   ├── code_digest.py           # Validation functions
-│   ├── template_registry.py     # Animation pattern templates
-│   ├── overlap_detector.py      # Layout overlap detection
-│   ├── error_parser.py          # Manim error parsing
-│   ├── tts.py                   # Text-to-speech voiceover
+│   ├── ai_functions.py           # LLM generation, review, fix, evaluate
+│   ├── code_digest.py            # Validation functions
+│   ├── template_registry.py      # Animation pattern templates
+│   ├── overlap_detector.py       # Layout overlap detection
+│   ├── error_parser.py           # Manim error parsing
+│   ├── tts.py                    # Text-to-speech voiceover
 │   ├── plan/
 │   │   ├── __init__.py
-│   │   ├── compiler.py          # JSON plan → Manim code
-│   │   ├── schema.py            # Plan validation schema
-│   │   └── examples.py          # Plan examples
+│   │   ├── compiler.py           # JSON plan → Manim code
+│   │   ├── schema.py             # Plan validation schema
+│   │   └── examples.py           # Plan examples
 │   └── layout/
-│       └── engine.py            # Deterministic layout engine
-│
+│       └── engine.py             # Deterministic layout engine
 ├── RAG/
-│   └── RAG_system.py            # Retrieval-augmented generation
-│
+│   └── RAG_system.py             # Retrieval-augmented generation
 ├── training/
-│   ├── questions.py             # Example prompts for UI
-│   ├── 3b1b/                    # 3Blue1Brown video reference scenes
+│   ├── questions.py              # Example prompts for UI
+│   ├── 3b1b/                     # 3Blue1Brown video reference scenes
 │   └── scrape_manim_examples.py
-│
-├── templates/                   # Animation templates
-├── prompts/                     # Prompt engineering files
-├── notes/                       # Documentation notes
-├── skills/                      # GSD skill definitions
-├── media/                       # Rendered outputs
+├── templates/                    # Animation templates
+├── prompts/                      # Prompt engineering files
+├── notes/                        # Documentation notes
+├── skills/                       # GSD skill definitions
+├── media/                        # Rendered outputs
 │   ├── images/
 │   └── videos/
 └── .planning/
-    └── codebase/                # This analysis output
+    └── codebase/                 # This analysis output
 ```
 
 ## Directory Purposes

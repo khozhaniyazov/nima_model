@@ -5,102 +5,106 @@
 ## Languages
 
 **Primary:**
-- Python 3.x - Backend server, AI pipeline, algorithms
-- TypeScript 5 - Frontend Next.js application
+- Python 3.11+ - Backend server, AI pipeline, algorithms, code generation
+- TypeScript 5 - Frontend type safety
+- JavaScript (ESNext) - Frontend React components
 
 **Secondary:**
-- JavaScript (JSX) - React components
+- SQL - Database schema and queries (PostgreSQL)
 
 ## Runtime
 
-**Environment:**
-- Node.js 20+ (for Next.js frontend)
-- Python 3.x (for Flask backend)
+**Backend:**
+- Python 3.11 - Flask application server, runs on localhost:5000
 
-**Package Managers:**
-- npm (frontend) - `nima-frontend/package.json`
-- pip (backend) - `requirements.txt`
-- Lockfiles: Not detected in repository
+**Frontend:**
+- Node.js 20+ - Next.js development server
+- Next.js 16.1.6 runtime (Edge/Serverless compatible)
+
+**Package Manager:**
+- pip (Python) - requirements.txt
+- npm (Node.js) - package.json in nima-frontend/
 
 ## Frameworks
 
-**Frontend:**
-- Next.js 16.1.6 - React framework for web UI
-- React 19.2.3 - UI library
-- Tailwind CSS 4.2.1 - Styling
-- PostCSS 8.5.8 - CSS processing
-
 **Backend:**
-- Flask 3.0+ - Python web server
-- Flask-CORS - Cross-origin resource sharing
+- Flask 3.0+ - HTTP server and API endpoints (`app.py`)
+- Flask-CORS - Cross-origin resource sharing for frontend API
 
-**AI/ML:**
-- OpenAI Python SDK 1.30+ - LLM API client
-- Manim 0.18+ - Mathematical animation engine
+**Frontend:**
+- Next.js 16.1.6 - React 19 framework with App Router
+- React 19.2.3 - UI components
+- Tailwind CSS 4.2.1 - Utility-first styling (via @tailwindcss/postcss)
 
-**Testing:**
-- Not configured in package.json (no test scripts defined)
-
-**Build/Dev:**
+**Build/Dev Tools:**
+- ESLint 9 - Frontend linting (eslint-config-next)
 - TypeScript 5 - Type checking
-- ESLint 9 - Linting (frontend)
-- Autoprefixer 10.4.27 - CSS vendor prefixes
+- PostCSS 8.5.8 - CSS processing for Tailwind
 
 ## Key Dependencies
 
-**Critical:**
-- `openai>=1.30` - AI code generation and TTS
-- `manim>=0.18` - Animation rendering engine
-- `flask>=3.0` - Backend API server
-- `flask-cors` - CORS support for frontend API calls
+**AI & Code Generation:**
+- openai>=1.30 - OpenAI API client (GPT-4o, GPT-4o-mini, GPT-5.2-codex models)
+- anthropic>=0.39.0 - Anthropic API client (for evaluation in skills/mcp-builder)
+- numpy>=1.26 - Numerical computing for code analysis
+
+**Animation Generation:**
+- manim>=0.18 - Mathematical animation engine (3b1b-style videos)
 
 **Database:**
-- `psycopg2-binary>=2.9` - PostgreSQL adapter for Python
+- psycopg2-binary>=2.9 - PostgreSQL database adapter
 
-**Data Processing:**
-- `numpy>=1.26` - Numerical computations
+**Configuration:**
+- python-dotenv>=1.0 - Environment variable loading from .env
 
-**Frontend:**
-- `next@16.1.6` - Web framework
-- `react@19.2.3` - UI library
-- `tailwindcss@4.2.1` - CSS framework
+**Media Processing:**
+- ffmpeg (external) - Audio/video concatenation and merging via subprocess
 
-**Utilities:**
-- `python-dotenv>=1.0` - Environment variable loading
+**Frontend Styling:**
+- @tailwindcss/postcss - Tailwind CSS v4 PostCSS plugin
+- autoprefixer - CSS vendor prefixing
 
 ## Configuration
 
-**Environment:**
-- `.env` file present at project root (contains secrets - not read)
-- `python-dotenv` loads `.env` for backend
-- Next.js uses default environment handling
+**Environment Variables (.env):**
+- `OPENAI_API_KEY` - OpenAI API key for GPT models
+- `OPENAI_BASE_URL` - Optional custom OpenAI endpoint
+- `GENERATION_MODEL` - Main code generation model (default: gpt-5.2-codex)
+- `FAST_MODEL` - Light tasks model (default: gpt-5.2-codex)
+- `DB_CONNECTION_STRING` - PostgreSQL connection string
+- `USE_DATABASE` - Enable/disable database (default: true)
+- `FAST_PIPELINE` - Fast mode flag (default: false)
+- `DRAFT_PIPELINE` - Ultra-fast preview mode (default: false)
+- `ENABLE_VOICEOVER` - TTS voiceover generation (default: true)
+- `TTS_MODEL` - OpenAI TTS model (default: gpt-4o-mini-tts)
+- `TTS_VOICE` - Voice preset (default: alloy)
 
-**Key environment variables (from config.py):**
-- `OPENAI_API_KEY` - OpenAI API authentication
-- `OPENAI_BASE_URL` - OpenAI endpoint (custom or default)
-- `DB_CONNECTION_STRING` - PostgreSQL connection
-- `GENERATION_MODEL` - Primary LLM for code generation
-- `FAST_MODEL` - Lightweight LLM for triage/analysis
-- `FAST_PIPELINE` / `DRAFT_PIPELINE` - Pipeline mode flags
+**Build Configuration:**
+- `nima-frontend/next.config.ts` - Next.js configuration (minimal, no special options)
+- `nima-frontend/tsconfig.json` - TypeScript configuration (inherited from eslint-config-next)
+- `nima-frontend/postcss.config.mjs` - PostCSS with Tailwind CSS 4 plugin
 
-**Build:**
-- `nima-frontend/tsconfig.json` - TypeScript config with path alias `@/*`
-- `nima-frontend/next.config.ts` - Next.js configuration
-- `nima-frontend/postcss.config.mjs` - PostCSS with Tailwind plugin
-- `nima-frontend/eslint.config.mjs` - ESLint with Next.js rules
+**Path Configuration (config.py):**
+- `MANIM_SCRIPTS` - `C:/temp/manim_scripts` - Temporary script storage
+- `OUTPUTS` - `C:/temp/outputs` - Rendered video output directory
+- `RENDER_TIMEOUT_SECONDS` - 900 (15 minutes)
+- `MAX_GENERATION_ATTEMPTS` - 2
+- `MAX_RENDER_RETRIES` - 3
 
 ## Platform Requirements
 
 **Development:**
-- Node.js 20+ (Next.js 16 requirement)
-- Python 3.x with pip
-- PostgreSQL server (for USE_DATABASE=true)
+- Python 3.11+
+- Node.js 20+
+- PostgreSQL instance (localhost:5432/manim_db)
+- ffmpeg in PATH (for TTS and video merging)
+- OpenAI API access
 
 **Production:**
-- Node.js runtime for Next.js (or Vercel/deployed hosting)
-- Python 3.x runtime for Flask
+- Flask server on port 5000
+- Next.js production build (or托管 platform)
 - PostgreSQL database
-- Manim CLI available in PATH for rendering
+- Persistent storage for outputs and scripts
 
 ---
 

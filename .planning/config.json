@@ -1,0 +1,20 @@
+{
+  "mode": "yolo",
+  "granularity": "coarse",
+  "parallelization": true,
+  "commit_docs": true,
+  "model_profile": "quality",
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": false,
+    "auto_advance": true
+  },
+  "planning": {
+    "sub_repos": [],
+    "project_path": "C:\\ai-manim"
+  },
+  "created_at": "2026-04-04",
+  "created_by": "/gsd-new-project --auto"
+}
