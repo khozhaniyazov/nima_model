@@ -24,6 +24,9 @@
 4. Error messages are clear and actionable
 5. FAST/DRAFT/FULL modes all function correctly
 
+### Plans
+- [ ] 1-01-PLAN.md — Fix critical bugs: is_fast scoping, video race, thread safety, validation gaps, Flask security, configurable paths
+
 ### Key Work
 - Audit and fix any flaky components in the generation pipeline
 - Ensure database fallbacks work gracefully when `USE_DATABASE=false`
