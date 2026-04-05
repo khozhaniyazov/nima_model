@@ -454,6 +454,9 @@ CRITICAL RULES:
 7. Include adequate self.wait() for pacing
 8. Clean up objects before scene ends (FadeOut or remove)
 9. Return code only — no comments, no explanations
+10. NEVER repeat prior scenes or re-introduce already explained concepts unless explicitly asked
+11. This is part of a continuous video: avoid hard resets, avoid "intro"/"summary" recaps in middle scenes
+12. For scene_index > 0, continue from prior context state and focus only on NEW progression
 
 """
 
@@ -557,9 +560,18 @@ def _build_scene_prompt(
     animation_steps = scene_plan.get("animation_steps", [])
     objects = scene_plan.get("objects", [])
 
+    total_scenes = int(context.domain_state.get("total_scenes", 0) or 0)
+    current_idx = int(context.scene_index)
+    scene_position = (
+        f"{current_idx + 1}/{total_scenes}" if total_scenes else str(current_idx + 1)
+    )
+
+    preamble_hint = generate_scene_preamble(context, scene_plan)
+
     prompt = f"""Create Manim CE scene for:
 
 SCENE: {scene_desc}
+SCENE POSITION: {scene_position}
 DURATION HINT: ~{duration_hint} seconds
 
 ANIMATION STEPS:
@@ -574,6 +586,16 @@ ANIMATION STEPS:
     prompt += f"""
 DOMAIN: {context.domain}
 TARGET TOTAL DURATION: {context.duration_target}s
+
+CONTINUITY REQUIREMENTS (CRITICAL):
+- This is scene {scene_position} of one continuous video.
+- Do NOT repeat explanation from previous scenes.
+- Do NOT restart from introductory framing unless this is scene 1.
+- Preserve narrative progression from prior scenes in context.
+- Avoid full-screen resets and unnecessary redraw of same objects.
+
+POSSIBLE CARRY-OVER HINTS:
+{preamble_hint or "(none)"}
 
 {context.to_context_string()}
 
@@ -874,6 +896,7 @@ def stream_render_scenes(
     pending_renders = {}  # scene_num -> future
     completed_renders = {}  # scene_num -> (video_path, success, error)
 
+    context.domain_state["total_scenes"] = len(scenes)
     print(f"[STREAM] Starting streaming pipeline for {len(scenes)} scenes")
 
     for scene_num, scene_plan in enumerate(scenes):
@@ -909,9 +932,7 @@ def stream_render_scenes(
                 )
                 completed_renders[scene_num - 1] = (video_path, success, error_msg)
 
-                if success:
-                    video_paths.append(video_path)
-                else:
+                if not success:
                     errors.append(
                         {"scene": scene_num - 1, "error": error_msg, "type": "render"}
                     )
@@ -941,9 +962,7 @@ def stream_render_scenes(
                 )
                 completed_renders[scene_num] = (video_path, success, error_msg)
 
-                if success and video_path:
-                    video_paths.append(video_path)
-                elif not success:
+                if not success:
                     errors.append(
                         {"scene": scene_num, "error": error_msg, "type": "render"}
                     )
@@ -954,8 +973,13 @@ def stream_render_scenes(
 
     render_executor.shutdown(wait=True)
 
-    # Sort video_paths by scene number
-    # video_paths should be ordered, but handle missing scenes gracefully
+    # Build ordered, de-duplicated list of successful scene videos.
+    video_paths = []
+    for scene_num in sorted(completed_renders.keys()):
+        video_path, success, _ = completed_renders[scene_num]
+        if success and video_path:
+            video_paths.append(video_path)
+
     print(
         f"[STREAM] Pipeline complete: {len(video_paths)} scenes rendered, {len(errors)} errors"
     )
