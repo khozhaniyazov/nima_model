@@ -192,6 +192,12 @@ Plans:
 3. API key authentication
 4. Enhanced batch processing
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Webhooks + API Key Authentication (M3-API-01, M3-API-03)
+- [ ] 12-02-PLAN.md — LMS Integration + Batch Improvements (M3-API-02, M3-API-04)
+
 ---
 
 ## Roadmap Summary
