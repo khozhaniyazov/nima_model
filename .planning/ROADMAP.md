@@ -137,6 +137,13 @@
 3. CDN URL mapping for external hosting
 4. Video search and metadata lookup
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Video storage organization and metadata API
+- [ ] 09-02-PLAN.md — CDN integration and VideoPlayer component
+- [ ] 09-03-PLAN.md — Video library page with search and playback
+
 ---
 
 ### Phase 10: Custom Styling/Branding
