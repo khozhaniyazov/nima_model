@@ -221,8 +221,52 @@ Plans:
 **Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)  
 **Milestone 3:** Video Hosting, Styling, Performance, API (4 phases) — ✓ COMPLETE → [v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
+### Phase 13: Streaming Generation
+
+**Goal:** Scene-by-scene generation with parallel render-while-generate.
+
+**Requirements:** M4-STREAM-01, M4-STREAM-02, M4-STREAM-03, M4-STREAM-04, M4-CODE-01, M4-CODE-02
+
+**Success Criteria:**
+1. Scene generation < 30s per scene
+2. Parallel render overlap
+3. Narrative coherence across scenes
+4. Scene-level retry
+5. No invalid Manim API calls
+
+**Plans:** 1 plan
+
+Plans:
+- [ ] 13-01-PLAN.md — Streaming Scene Engine + Parallel Render
+
+---
+
+## Roadmap Summary
+
+| # | Phase | Goal | Requirements | Success Criteria |
+|---|-------|------|--------------|------------------|
+| 1 | Foundation & Stability | Reliable pipeline | 16 | Prompt → video, no crashes, graceful degradation |
+| 2 | Quality & Reliability | Reduce retries | 9 | ≥90% first-attempt success, all domains work |
+| 3 | Voiceover & Polish | Complete TTS pipeline | 4 | Narrated video with synced audio |
+| 4 | Evaluation & Learning | Quality tracking | 3 | Scores visible, examples retrievable |
+| 5 | Production Hardening | Deployment-ready | 3 | Concurrent requests, monitoring, security |
+| 6 | Semantic RAG & Quality Prediction | Smart retrieval | 4 | Embedding-based RAG, quality prediction |
+| 7 | Template Expansion | Domain coverage | 4 | All domains have rich templates |
+| 8 | Evaluation Dashboard | Metrics visibility | 4 | Frontend dashboard for quality |
+| 9 | Video Hosting | Video storage/playback | 4 | Local storage + CDN + search |
+| 10 | Custom Styling/Branding | Themes + branding | 4 | Themes, watermarks, intro/outro |
+| 11 | Performance Optimization | Faster renders | 4 | Caching + parallel execution |
+| 12 | API/Integrations | Webhooks + LMS | 4 | Webhooks + API keys |
+| 13 | Streaming Generation | Scene-by-scene | 6 | <30s/scene, parallel render |
+
+**Milestone 1:** All v1 requirements covered (5 phases) — COMPLETE  
+**Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)  
+**Milestone 3:** Video Hosting, Styling, Performance, API (4 phases) — ✓ COMPLETE → [v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)  
+**Milestone 4:** Streaming Generation (Phase 13) — IN PROGRESS
+
 ---
 
 *Roadmap created: 2026-04-04*
 *Milestone 2 archived: 2026-04-05*
 *Milestone 3 archived: 2026-04-05*
+*Phase 13 added: 2026-04-05*
