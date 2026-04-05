@@ -158,6 +158,12 @@ Plans:
 3. Intro/outro animation templates
 4. Custom color palette per video
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Theme system and color palettes (frontend)
+- [ ] 10-02-PLAN.md — Watermark and intro/outro system (backend)
+
 ---
 
 ### Phase 11: Performance Optimization
