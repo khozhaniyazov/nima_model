@@ -219,10 +219,10 @@ Plans:
 
 **Milestone 1:** All v1 requirements covered (5 phases) — COMPLETE  
 **Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)  
-**Milestone 3:** Video Hosting, Styling, Performance, API (4 phases) — PENDING
+**Milestone 3:** Video Hosting, Styling, Performance, API (4 phases) — ✓ COMPLETE → [v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 ---
 
 *Roadmap created: 2026-04-04*
 *Milestone 2 archived: 2026-04-05*
-*Milestone 3 added: 2026-04-05*
+*Milestone 3 archived: 2026-04-05*
