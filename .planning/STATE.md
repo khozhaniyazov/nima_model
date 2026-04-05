@@ -40,6 +40,12 @@
 
 ---
 
+## Milestone 4 Complete
+
+All phases complete. Pipeline streaming works (<30s/scene).
+
+---
+
 ## Config
 
 ```json

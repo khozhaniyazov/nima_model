@@ -262,7 +262,7 @@ Plans:
 **Milestone 1:** All v1 requirements covered (5 phases) — COMPLETE  
 **Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)  
 **Milestone 3:** Video Hosting, Styling, Performance, API (4 phases) — ✓ COMPLETE → [v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)  
-**Milestone 4:** Streaming Generation (Phase 13) — IN PROGRESS
+**Milestone 4:** Streaming Generation (Phase 13) — ✓ COMPLETE → [v4.0-ROADMAP.md](milestones/v4.0-ROADMAP.md)
 
 ---
 
