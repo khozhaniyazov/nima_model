@@ -72,7 +72,7 @@ STREAM_PROVIDERS = {
         "timeout": 45,
     },
     "openai": {
-        "base_url": "https://api.openai.com/v1",
+        "base_url": OPENAI_BASE_URL,
         "api_key": OPENAI_API_KEY,
         "model": GENERATION_MODEL,
         "timeout": 60,
@@ -81,6 +81,12 @@ STREAM_PROVIDERS = {
 
 # Active provider (auto-select based on availability)
 STREAM_PROVIDER = os.getenv("STREAM_PROVIDER", "auto")
+
+# Scene generation settings
+STREAM_SCENE_TIMEOUT = 45  # seconds per scene generation
+STREAM_MAX_SCENES = 20  # max scenes per video
+STREAM_SCENE_RETRIES = 3  # retries per scene on failure
+STREAM_MIN_SCENES = 2  # minimum scenes for long outputs
 
 
 def _select_provider() -> str:
@@ -267,11 +273,50 @@ def split_plan_into_scenes(plan_data: dict, max_scenes: int = 20) -> List[dict]:
                 "description": raw.get("description", raw.get("narration", "")),
                 "objects": raw.get("objects", []),
                 "duration_hint": raw.get("duration", raw.get("estimated_duration", 10)),
-                "animation_steps": raw.get("animation", raw.get("beats", [])),
+                "animation_steps": raw.get("animation", raw.get("beats", []))
+                or [raw.get("visual_description", "")],
             }
         )
 
-    return scenes
+    return _ensure_min_scene_count(scenes, plan_data)
+
+
+def _ensure_min_scene_count(scenes: List[dict], plan_data: dict) -> List[dict]:
+    """Expand one long scene into 3 chunks for richer outputs."""
+    if len(scenes) != 1:
+        return scenes
+
+    target_duration = int(plan_data.get("duration", 0) or 0)
+    if target_duration < 120:
+        return scenes
+
+    scene = scenes[0]
+    steps = scene.get("animation_steps", [])
+    if not steps:
+        steps = [scene.get("description", "")]
+
+    chunk_count = 3
+    chunk_size = max(1, len(steps) // chunk_count)
+    expanded = []
+    for i in range(chunk_count):
+        start = i * chunk_size
+        end = None if i == chunk_count - 1 else (i + 1) * chunk_size
+        chunk_steps = steps[start:end]
+        if not chunk_steps:
+            continue
+        expanded.append(
+            {
+                "scene_id": f"scene_{i}",
+                "description": f"{scene.get('description', 'Scene')} (Part {i + 1}/{chunk_count})",
+                "objects": scene.get("objects", []),
+                "duration_hint": max(
+                    15, int(scene.get("duration_hint", 45) / chunk_count)
+                ),
+                "animation_steps": chunk_steps,
+            }
+        )
+
+    return expanded or scenes
 
 
 def _beats_to_scene(scene_id: str, beats: List[dict], plan_data: dict) -> dict:
@@ -348,7 +393,7 @@ def stream_generate(
             model=cfg["model"],
             messages=messages,
             stream=True,
-            max_tokens=2000,
+            max_tokens=3500,
         )
 
         for chunk in response:
@@ -382,7 +427,7 @@ def _generate_non_streaming(prompt: str, context: NarrativeContext) -> Iterator[
         response = client.chat.completions.create(
             model=provider_cfg["model"],
             messages=messages,
-            max_tokens=2000,
+            max_tokens=5000,
         )
         content = response.choices[0].message.content or ""
         # Yield in chunks to simulate streaming
@@ -458,9 +503,6 @@ def generate_scene(
 
             for token in stream_generate(prompt, context):
                 code_chunks.append(token)
-                # Check timeout (30s target)
-                if time.time() - start_time > 30 and code_chunks:
-                    break
 
             full_code = "".join(code_chunks)
             elapsed = time.time() - start_time
@@ -472,6 +514,13 @@ def generate_scene(
 
             # Extract code from markdown if present
             code = _extract_manim_code(full_code)
+
+            # Validate syntax early to force retry before render
+            from algorithms.code_digest import validate_python_syntax
+
+            syntax_ok, syntax_err = validate_python_syntax(code)
+            if not syntax_ok:
+                raise ValueError(f"Syntax error: {syntax_err}")
 
             # Validate basic structure
             if "class GeneratedScene" not in code and "class Scene" not in code:
@@ -628,8 +677,6 @@ Fix the code to resolve the render error. Return ONLY the corrected Python code.
     code_chunks = []
     for token in stream_generate(retry_prompt, context):
         code_chunks.append(token)
-        if len(code_chunks) > 100:  # ~2000 chars, enough for a scene
-            break
 
     full_code = "".join(code_chunks)
     code = _extract_manim_code(full_code)

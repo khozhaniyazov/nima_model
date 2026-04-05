@@ -1044,9 +1044,9 @@ def stream_generate_and_render(
 
     # ── Step 2: Create animation plan ─────────────────────────────────
     render_status[job_id]["message"] = "Creating animation plan..."
-    from algorithms.request_analysis import create_animation_plan
+    from algorithms.request_analysis import create_narrated_plan
 
-    plan = create_animation_plan(prompt, analysis)
+    plan = create_narrated_plan(prompt, analysis)
     print(f"[STREAM] Plan created ({len(plan)} chars)")
 
     # ── Step 3: Parse plan into scenes ─────────────────────────────────
@@ -1955,6 +1955,8 @@ def api_generate():
     if not prompt:
         return jsonify({"error": "Please enter a prompt."}), 400
 
+    use_streaming = data.get("streaming", True)
+
     try:
         job_id = str(uuid.uuid4())[:8]
         filename = f"video_{job_id}"
@@ -1962,6 +1964,7 @@ def api_generate():
         safe_prompt = prompt.encode("ascii", "ignore").decode()
         print(f"\n{'#' * 60}")
         print(f"[{job_id}] NEW REQUEST (API) Voiceover={use_voiceover}: {safe_prompt}")
+        print(f"[{job_id}] PIPELINE: {'STREAMING' if use_streaming else 'BULK'}")
         print(f"{'#' * 60}\n")
 
         render_status[job_id] = {
@@ -1972,35 +1975,47 @@ def api_generate():
 
         def background_generate():
             try:
-                (
-                    code,
-                    attempts_log,
-                    req_id,
-                    att_id,
-                    a_segs,
-                    a_order,
-                    is_fast,
-                    analysis,
-                ) = generate_and_validate_code(
-                    prompt,
-                    job_id,
-                    max_attempts=MAX_GENERATION_ATTEMPTS,
-                    voiceover=use_voiceover,
-                    voice=use_voice,
-                )
-                job_to_request[job_id] = {"request_id": req_id, "prompt": prompt}
-                render_async(
-                    code,
-                    filename,
-                    job_id,
-                    req_id,
-                    prompt,
-                    att_id,
-                    a_segs,
-                    a_order,
-                    is_fast,
-                    analysis,
-                )
+                if use_streaming:
+                    final_video, scene_results, final_context = (
+                        stream_generate_and_render(
+                            prompt,
+                            job_id,
+                            analysis=None,
+                            voiceover=use_voiceover,
+                            voice=use_voice,
+                        )
+                    )
+                    job_to_request[job_id] = {"request_id": None, "prompt": prompt}
+                else:
+                    (
+                        code,
+                        attempts_log,
+                        req_id,
+                        att_id,
+                        a_segs,
+                        a_order,
+                        is_fast,
+                        analysis,
+                    ) = generate_and_validate_code(
+                        prompt,
+                        job_id,
+                        max_attempts=MAX_GENERATION_ATTEMPTS,
+                        voiceover=use_voiceover,
+                        voice=use_voice,
+                    )
+                    job_to_request[job_id] = {"request_id": req_id, "prompt": prompt}
+                    render_async(
+                        code,
+                        filename,
+                        job_id,
+                        req_id,
+                        prompt,
+                        att_id,
+                        a_segs,
+                        a_order,
+                        is_fast,
+                        analysis,
+                    )
             except Exception as e:
                 print(f"[{job_id}] [ERR] ERROR in background generation: {e}")
                 render_status[job_id] = {
