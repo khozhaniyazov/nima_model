@@ -257,7 +257,7 @@ Plans:
 | 10 | Custom Styling/Branding | Themes + branding | 4 | Themes, watermarks, intro/outro |
 | 11 | Performance Optimization | Faster renders | 4 | Caching + parallel execution |
 | 12 | API/Integrations | Webhooks + LMS | 4 | Webhooks + API keys |
-| 13 | Streaming Generation | Scene-by-scene | 6 | <30s/scene, parallel render |
+| 13 | Streaming Generation | Scene-by-scene | 6 | <30s/scene, parallel render | ✓ Complete |
 
 **Milestone 1:** All v1 requirements covered (5 phases) — COMPLETE  
 **Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)  
