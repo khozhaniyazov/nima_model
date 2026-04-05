@@ -123,74 +123,6 @@
 
 ---
 
-## Milestone 2: RAG v2, Templates, Dashboard
-
-### Phase 6: Semantic RAG & Quality Prediction
-
-**Goal:** Replace keyword matching with semantic embeddings, add pre-render quality prediction.
-
-**Requirements:** M2-RAG-01, M2-RAG-02, M2-RAG-03, M2-QUAL-01
-
-**Success Criteria:**
-1. RAG uses embedding similarity instead of keyword matching
-2. High-scorers inform future generation (fine-tuning corpus)
-3. Error patterns auto-categorized and avoided
-4. Quality prediction available before render
-
-**Key Work:**
-- Add sentence embeddings for corpus patterns
-- Implement cosine similarity retrieval
-- Build high-scorer weighting in retrieval
-- Train/finetune on quality examples
-- Add pre-render quality scoring
-
----
-
-### Phase 7: Template Expansion
-
-**Goal:** Expand template registry for all domains, add user contributions.
-
-**Requirements:** M2-TEMP-01, M2-TEMP-02, M2-TEMP-03, M2-TEMP-04
-
-**Success Criteria:**
-1. Physics domain has wave, field, oscillation templates
-2. CS domain has sorting, tree, graph templates
-3. Chemistry domain has reaction, orbital templates
-4. Users can contribute and share templates
-
-**Key Work:**
-- Add physics animation patterns
-- Add CS algorithm patterns
-- Add chemistry visualization patterns
-- Build template tagging and search
-- Create user template gallery
-
----
-
-### Phase 8: Evaluation Dashboard
-
-**Goal:** Build Next.js dashboard for quality metrics and example showcase.
-
-**Requirements:** M2-DASH-01, M2-DASH-02, M2-DASH-03, M2-DASH-04
-
-**Success Criteria:**
-1. Dashboard at /dashboard shows quality metrics
-2. Trend charts show renders/day and quality over time
-3. Top examples are playable with quality scores
-4. Error patterns visualized and tracked
-
-**Key Work:**
-- Build dashboard frontend (Next.js)
-- Add trend visualization (recharts or similar)
-- Implement video playback for top examples
-- Build error pattern analytics view
-
-**Plans:**
-- [ ] 08-01-PLAN.md — Dashboard foundation: API client, stats grid, quality chart
-- [ ] 08-02-PLAN.md — Full dashboard: trend chart, top examples, error patterns
-
----
-
 ## Roadmap Summary
 
 | # | Phase | Goal | Requirements | Success Criteria |
@@ -204,10 +136,10 @@
 | 7 | Template Expansion | Domain coverage | 4 | All domains have rich templates |
 | 8 | Evaluation Dashboard | Metrics visibility | 4 | Frontend dashboard for quality |
 
-**Milestone 1: All v1 requirements covered (5 phases).**  
-**Milestone 2: RAG v2, Templates, Dashboard (3 phases).**
+**Milestone 1:** All v1 requirements covered (5 phases) — COMPLETE  
+**Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)
 
 ---
 
 *Roadmap created: 2026-04-04*
-*Milestone 2 added: 2026-04-05*
+*Milestone 2 archived: 2026-04-05*

@@ -46,14 +46,13 @@ Creating quality educational animations (like 3Blue1Brown) requires both mathema
 
 ### Active
 
-- [ ] Improve code generation quality (fewer render retries)
-- [ ] Expand template registry (more animation patterns)
-- [ ] Add batch processing for multiple requests
+- [x] Add batch processing for multiple requests (Phase 5, V2-02)
 - [ ] Implement user authentication
 - [ ] Add video hosting/integration options
-- [ ] Improve RAG corpus with more examples
-- [ ] Support additional animation domains beyond math
-- [ ] Build evaluation dashboard
+- [ ] Improve RAG with semantic search (Milestone 2)
+- [ ] Fine-tune model on high-scorers (Milestone 2)
+- [ ] Support additional animation domains (Milestone 2 - expanded templates)
+- [ ] Build evaluation dashboard (Milestone 2)
 - [ ] Add custom styling/branding options
 
 ### Out of Scope
@@ -121,6 +120,32 @@ User Prompt → Flask API → Background Thread
 
 ---
 
+## Milestone 2 (2026-04-05) ✓ COMPLETE
+
+**Focus:** RAG & Quality v2, Template Expansion, Evaluation Dashboard
+
+### All Requirements Complete
+
+#### RAG & Quality v2
+- [x] M2-RAG-01: Semantic embeddings for pattern retrieval
+- [x] M2-RAG-02: High-scorer fine-tuning pipeline (placeholder)
+- [x] M2-RAG-03: Error pattern learning from failed renders
+- [x] M2-QUAL-01: Quality score prediction before render
+
+#### Template Expansion
+- [x] M2-TEMP-01: Expand physics domain templates (wave, field, oscillation)
+- [x] M2-TEMP-02: Expand CS domain templates (sorting, trees, graphs)
+- [x] M2-TEMP-03: Expand chemistry domain templates (reactions, orbitals)
+- [x] M2-TEMP-04: User template contribution system
+
+#### Evaluation Dashboard
+- [x] M2-DASH-01: Quality metrics dashboard (Next.js frontend)
+- [x] M2-DASH-02: Trend charts (renders per day, quality over time)
+- [x] M2-DASH-03: Top examples showcase with playback
+- [x] M2-DASH-04: Error pattern visualization
+
+---
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -140,4 +165,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-04 after initialization*
+*Last updated: 2026-04-05 after Milestone 2 completion*

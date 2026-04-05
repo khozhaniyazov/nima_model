@@ -2,6 +2,7 @@
 
 **Project:** NIMA — Manim AI Generator
 **Created:** 2026-04-04
+**Milestone:** 2 (RAG v2, Templates, Dashboard)
 **Mode:** YOLO (auto-approve)
 **Granularity:** Coarse
 **Parallelization:** true
@@ -12,12 +13,10 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| PROJECT.md | ✓ Created | Synthesized from existing codebase |
-| config.json | ✓ Created | YOLO mode, Coarse granularity, parallel execution |
-| Research | ✓ Complete | 3 research documents in `.planning/research/` |
-| REQUIREMENTS.md | ✓ Created | 18 v1 requirements, 5 v2, 9 out of scope |
-| ROADMAP.md | ✓ Created | 5 phases, all requirements covered |
-| Codebase mapping | ✓ Complete | 7 documents in `.planning/codebase/` |
+| PROJECT.md | ✓ Updated | Milestone 2 goals added |
+| REQUIREMENTS.md | ✓ Updated | Milestone 2 requirements added |
+| ROADMAP.md | ✓ Updated | Phases 6-8 defined |
+| Milestone 1 | ✓ Complete | All v1 requirements validated |
 
 ---
 
@@ -25,11 +24,14 @@
 
 | Phase | Name | Status | Requirements |
 |-------|------|--------|--------------|
-| 1 | Foundation & Stability | Not Started | 16 |
-| 2 | Quality & Reliability | Not Started | 9 |
-| 3 | Voiceover & Polish | Not Started | 4 |
-| 4 | Evaluation & Learning | Not Started | 3 |
-| 5 | Production Hardening | Not Started | 3 |
+| 1 | Foundation & Stability | ✓ Complete | 16 |
+| 2 | Quality & Reliability | ✓ Complete | 9 |
+| 3 | Voiceover & Polish | ✓ Complete | 4 |
+| 4 | Evaluation & Learning | ✓ Complete | 3 |
+| 5 | Production Hardening | ✓ Complete | 3 |
+| 6 | Semantic RAG & Quality Prediction | ✓ Complete | 4 |
+| 7 | Template Expansion | ✓ Complete | 4 |
+| 8 | Evaluation Dashboard | ✓ Complete | 4 |
 
 ---
 
@@ -66,8 +68,8 @@
 
 ## Next Step
 
-Run `/gsd-plan-phase 1` to start executing Phase 1.
+All Milestone 2 phases complete. Run `/gsd-complete-milestone` to finalize.
 
 ---
 
-*State created: 2026-04-04*
+*State updated: 2026-04-05 for Milestone 2*
