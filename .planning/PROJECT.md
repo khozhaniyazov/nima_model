@@ -46,11 +46,10 @@ Creating quality educational animations (like 3Blue1Brown) requires both mathema
 
 ### Active
 
-- [ ] Video hosting with CDN integration (Milestone 3)
-- [ ] Custom styling/branding (Milestone 3)
-- [ ] Performance optimization (Milestone 3)
-- [ ] API/Integrations (Milestone 3)
-- [ ] Implement user authentication
+- [ ] Streaming scene-by-scene generation (Milestone 4)
+- [ ] Parallel render-while-generate pipeline (Milestone 4)
+- [ ] Scene-level retry instead of full video (Milestone 4)
+- [ ] Valid Manim API generation (Milestone 4)
 
 ### Out of Scope
 
@@ -175,6 +174,31 @@ User Prompt → Flask API → Background Thread
 
 ---
 
+## Milestone 4 (TBD)
+
+**Goal:** Eliminate LLM timeout/invalid-API issues with streaming scene-by-scene generation.
+
+### Target Features
+1. **Streaming LLM Generation** — Scene-by-scene output, not bulk 10K+ chars
+2. **Parallel Render Pipeline** — Render previous scenes while generating next
+3. **Narrative Context** — Maintain coherence across all scenes
+4. **Scene-Level Retry** — Failed scene re-generates without full video restart
+
+### Active Requirements
+
+#### Streaming Generation (M4-STREAM)
+- [ ] M4-STREAM-01: Scene-by-scene streaming generation
+- [ ] M4-STREAM-02: Parallel render-while-generate pipeline
+- [ ] M4-STREAM-03: Narrative context preservation across scenes
+- [ ] M4-STREAM-04: Scene-level retry (not full video)
+
+#### Code Quality (M4-CODE)
+- [ ] M4-CODE-01: Valid Manim API generation (no invalid calls like `start_section()`)
+- [ ] M4-CODE-02: Scene-level code validation before render
+- [ ] M4-CODE-03: Automatic API correction/hints for common mistakes
+
+---
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -194,4 +218,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-05 after Milestone 3 completion*
+*Last updated: 2026-04-05 after Milestone 4 initialization*
