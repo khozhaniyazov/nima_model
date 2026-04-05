@@ -241,6 +241,7 @@ def split_plan_into_scenes(plan_data: dict, max_scenes: int = 20) -> List[dict]:
             scenes.append(
                 _beats_to_scene(f"scene_{len(scenes)}", scene_beats, plan_data)
             )
+        return scenes
     elif "segments" in plan_data:
         # Voiceover-style segments
         raw_scenes = plan_data["segments"]
