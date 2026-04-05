@@ -123,6 +123,64 @@
 
 ---
 
+## Milestone 3: Video Hosting, Styling, Performance, API
+
+### Phase 9: Video Hosting
+
+**Goal:** Built-in video storage, playback, and CDN integration.
+
+**Requirements:** M3-VID-01, M3-VID-02, M3-VID-03, M3-VID-04
+
+**Success Criteria:**
+1. Videos stored locally with organized structure
+2. HTML5 video playback in web interface
+3. CDN URL mapping for external hosting
+4. Video search and metadata lookup
+
+---
+
+### Phase 10: Custom Styling/Branding
+
+**Goal:** Themes, watermarks, intro/outro animations.
+
+**Requirements:** M3-STYLE-01, M3-STYLE-02, M3-STYLE-03, M3-STYLE-04
+
+**Success Criteria:**
+1. Theme system with light/dark/custom modes
+2. Custom watermark support
+3. Intro/outro animation templates
+4. Custom color palette per video
+
+---
+
+### Phase 11: Performance Optimization
+
+**Goal:** Faster renders through caching and parallel execution.
+
+**Requirements:** M3-PERF-01, M3-PERF-02, M3-PERF-03, M3-PERF-04
+
+**Success Criteria:**
+1. Render caching reduces redundant renders
+2. Parallel pipeline execution
+3. Code generation caching
+4. Asset preloading
+
+---
+
+### Phase 12: API/Integrations
+
+**Goal:** Webhooks, LMS integration, public API.
+
+**Requirements:** M3-API-01, M3-API-02, M3-API-03, M3-API-04
+
+**Success Criteria:**
+1. Webhook notifications on render complete
+2. Canvas/Moodle LTI integration
+3. API key authentication
+4. Enhanced batch processing
+
+---
+
 ## Roadmap Summary
 
 | # | Phase | Goal | Requirements | Success Criteria |
@@ -135,11 +193,17 @@
 | 6 | Semantic RAG & Quality Prediction | Smart retrieval | 4 | Embedding-based RAG, quality prediction |
 | 7 | Template Expansion | Domain coverage | 4 | All domains have rich templates |
 | 8 | Evaluation Dashboard | Metrics visibility | 4 | Frontend dashboard for quality |
+| 9 | Video Hosting | Video storage/playback | 4 | Local storage + CDN + search |
+| 10 | Custom Styling/Branding | Themes + branding | 4 | Themes, watermarks, intro/outro |
+| 11 | Performance Optimization | Faster renders | 4 | Caching + parallel execution |
+| 12 | API/Integrations | Webhooks + LMS | 4 | Webhooks + API keys |
 
 **Milestone 1:** All v1 requirements covered (5 phases) — COMPLETE  
-**Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)
+**Milestone 2:** RAG v2, Templates, Dashboard (3 phases) — COMPLETE → [Archived](milestones/v2.0-ROADMAP.md)  
+**Milestone 3:** Video Hosting, Styling, Performance, API (4 phases) — PENDING
 
 ---
 
 *Roadmap created: 2026-04-04*
 *Milestone 2 archived: 2026-04-05*
+*Milestone 3 added: 2026-04-05*

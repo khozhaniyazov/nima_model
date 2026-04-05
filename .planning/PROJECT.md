@@ -46,14 +46,11 @@ Creating quality educational animations (like 3Blue1Brown) requires both mathema
 
 ### Active
 
-- [x] Add batch processing for multiple requests (Phase 5, V2-02)
+- [ ] Video hosting with CDN integration (Milestone 3)
+- [ ] Custom styling/branding (Milestone 3)
+- [ ] Performance optimization (Milestone 3)
+- [ ] API/Integrations (Milestone 3)
 - [ ] Implement user authentication
-- [ ] Add video hosting/integration options
-- [ ] Improve RAG with semantic search (Milestone 2)
-- [ ] Fine-tune model on high-scorers (Milestone 2)
-- [ ] Support additional animation domains (Milestone 2 - expanded templates)
-- [ ] Build evaluation dashboard (Milestone 2)
-- [ ] Add custom styling/branding options
 
 ### Out of Scope
 
@@ -146,6 +143,44 @@ User Prompt → Flask API → Background Thread
 
 ---
 
+## Milestone 3 (TBD)
+
+**Focus:** Video Hosting, Custom Styling/Branding, Performance Optimization, API/Integrations
+
+### Goals
+1. **Video Hosting** — Built-in video storage, playback, CDN integration
+2. **Custom Styling/Branding** — Themes, watermarks, intro/outro animations
+3. **Performance Optimization** — Faster renders, caching, parallel pipeline
+4. **API/Integrations** — Webhooks, LMS integration (Canvas, Moodle)
+
+### Active Milestone 3 Requirements
+
+#### Video Hosting
+- [ ] M3-VID-01: Local video storage with organized directory structure
+- [ ] M3-VID-02: Video playback within the web interface
+- [ ] M3-VID-03: CDN integration for faster video delivery
+- [ ] M3-VID-04: Video metadata and search capabilities
+
+#### Custom Styling/Branding
+- [ ] M3-STYLE-01: Theme system (light/dark/custom)
+- [ ] M3-STYLE-02: Watermark/logo customization
+- [ ] M3-STYLE-03: Intro/outro animation templates
+- [ ] M3-STYLE-04: Custom color palette support
+
+#### Performance Optimization
+- [ ] M3-PERF-01: Render caching (skip re-renders for same code)
+- [ ] M3-PERF-02: Parallel pipeline execution
+- [ ] M3-PERF-03: Code generation caching
+- [ ] M3-PERF-04: Asset preloading and optimization
+
+#### API/Integrations
+- [ ] M3-API-01: Webhook notifications for render completion
+- [ ] M3-API-02: LMS integration API (Canvas, Moodle)
+- [ ] M3-API-03: Public API with API key authentication
+- [ ] M3-API-04: Batch processing improvements
+
+---
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -165,4 +200,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-05 after Milestone 2 completion*
+*Last updated: 2026-04-05 after Milestone 3 initialization*

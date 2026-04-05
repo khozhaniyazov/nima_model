@@ -1,108 +1,134 @@
 # NIMA Requirements
 
-**Analysis Date:** 2026-04-04
+**Analysis Date:** 2026-04-05  
+**Milestone:** 3 - Video Hosting, Styling, Performance, API
 
-## v1 Requirements
+---
 
-### Authentication
+## Milestone 1 & 2 Requirements (Archived)
 
-- [ ] **AUTH-01**: User can access the web interface without authentication (localhost-only deployment)
+All requirements from Milestone 1 and 2 are archived in their respective milestone folders:
+- v1.0-REQUIREMENTS.md
+- v2.0-REQUIREMENTS.md
 
-### Animation Generation
+---
 
-- [ ] **GEN-01**: User can submit a natural language prompt describing an educational animation
-- [ ] **GEN-02**: System generates Manim Python code from the prompt using AI
-- [ ] **GEN-03**: System renders the generated code to an MP4 video
-- [ ] **GEN-04**: User can poll job status and receive progress updates
-- [ ] **GEN-05**: User can download the rendered video
+## Milestone 3 Requirements
 
-### Code Quality
+### Video Hosting (M3-VID)
 
-- [ ] **QUAL-01**: Generated code passes Python syntax validation
-- [ ] **QUAL-02**: Generated code passes Manim structure validation (class GeneratedScene, self.play)
-- [ ] **QUAL-03**: Generated code passes security validation (no forbidden imports/calls)
-- [ ] **QUAL-04**: Math domain LaTeX strings are validated before rendering
+- [ ] **M3-VID-01**: Local video storage with organized directory structure
+  - Videos stored in organized folders by date/domain
+  - Metadata database for video lookup
 
-### Self-Healing
+- [ ] **M3-VID-02**: Video playback within the web interface
+  - HTML5 video player with controls
+  - Video preview thumbnails
 
-- [ ] **HEAL-01**: Render errors are parsed and categorized
-- [ ] **HEAL-02**: Failed renders trigger LLM-powered error fixing
-- [ ] **HEAL-03**: System retries rendering up to 3 times with automatic fixes
+- [ ] **M3-VID-03**: CDN integration for faster video delivery
+  - Support for external CDN URLs
+  - Video URL mapping/transformation
 
-### Domain Support
+- [ ] **M3-VID-04**: Video metadata and search capabilities
+  - Search by prompt, domain, date
+  - Filter and sort video library
 
-- [ ] **DOM-01**: Math domain animations work with deterministic plan compiler
-- [ ] **DOM-02**: Physics domain animations with appropriate visualizations (arrows, fields)
-- [ ] **DOM-03**: Computer Science domain animations (arrays, trees, graphs)
-- [ ] **DOM-04**: Chemistry domain animations (molecules, reactions)
+---
 
-### Voiceover
+### Custom Styling/Branding (M3-STYLE)
 
-- [ ] **VOIC-01**: User can enable TTS voiceover narration
-- [ ] **VOIC-02**: Narration segments are generated using OpenAI TTS
-- [ ] **VOIC-03**: Audio and video are merged with synchronized timing
-- [ ] **VOIC-04**: Audio duration drives animation timing (timing contract)
+- [ ] **M3-STYLE-01**: Theme system
+  - Light/dark mode toggle
+  - Custom theme support (colors, fonts)
+  - Blueprint theme (current default)
 
-### RAG System
+- [ ] **M3-STYLE-02**: Watermark/logo customization
+  - Add custom watermark to rendered videos
+  - Position and opacity controls
+  - Disable watermark option
 
-- [ ] **RAG-01**: Golden examples are retrieved based on domain/topic matching
-- [ ] **RAG-02**: High-quality past examples (≥80 score) are retrievable
-- [ ] **RAG-03**: Error patterns inform future generation to avoid repeated mistakes
+- [ ] **M3-STYLE-03**: Intro/outro animation templates
+  - Custom intro animation with branding
+  - Custom outro animation with credits
+  - Logo reveal animation
 
-### Quality Evaluation
+- [ ] **M3-STYLE-04**: Custom color palette support
+  - User-defined accent colors
+  - Per-video theme overrides
+  - Theme presets
 
-- [ ] **EVAL-01**: Rendered animations are scored on quality dimensions
-- [ ] **EVAL-02**: Evaluation scores are stored in the database
-- [ ] **EVAL-03**: Quality metrics are visible via /stats endpoint
+---
 
-### Pipeline Modes
+### Performance Optimization (M3-PERF)
 
-- [ ] **MODE-01**: FULL pipeline mode for production quality renders
-- [ ] **MODE-02**: FAST pipeline mode for quick iteration
-- [ ] **MODE-03**: DRAFT pipeline mode for ultra-fast preview
+- [ ] **M3-PERF-01**: Render caching
+  - Cache rendered videos by code hash
+  - Skip re-renders for identical code
+  - Cache invalidation strategy
 
-### Short Prompt Expansion
+- [ ] **M3-PERF-02**: Parallel pipeline execution
+  - Concurrent code generation and validation
+  - Multi-threaded rendering where possible
+  - Resource pool management
 
-- [ ] **EXP-01**: Truncated prompts (ending in "...") are detected and expanded
-- [ ] **EXP-02**: Problem-statement prompts (solve, compute, find) are expanded with visual guidance
+- [ ] **M3-PERF-03**: Code generation caching
+  - Cache AI responses for similar prompts
+  - Semantic cache for prompt variations
+  - Cache hit rate metrics
 
-### Layout Validation
+- [ ] **M3-PERF-04**: Asset preloading and optimization
+  - Preload common assets (axes, planes)
+  - Optimize LaTeX compilation
+  - Reduce scene initialization time
 
-- [ ] **LAY-01**: Position collisions are detected before rendering
-- [ ] **LAY-02**: Object accumulation issues are detected
-- [ ] **LAY-03**: Section cleanup helpers are validated for multi-step scenes
+---
 
-## v2 Requirements (Deferred)
+### API/Integrations (M3-API)
 
-- [ ] **V2-01**: User authentication and account management
-- [ ] **V2-02**: Batch processing for multiple animation requests
-- [ ] **V2-03**: Video hosting/integration options
-- [ ] **V2-04**: Evaluation dashboard with analytics
-- [ ] **V2-05**: Custom styling and branding options
+- [ ] **M3-API-01**: Webhook notifications
+  - POST callback on render complete
+  - Configurable webhook URL per request
+  - Retry logic for failed webhooks
+
+- [ ] **M3-API-02**: LMS integration API
+  - Canvas LMS integration
+  - Moodle integration
+  - LTI support for embedding
+
+- [ ] **M3-API-03**: Public API with key authentication
+  - API key generation and management
+  - Rate limiting per API key
+  - Usage tracking and quotas
+
+- [ ] **M3-API-04**: Batch processing improvements
+  - Enhanced batch endpoint
+  - Batch status polling
+  - Batch progress notifications
+
+---
 
 ## Out of Scope
 
-- **3D Animations** — Manim CE 2D focus is intentional; 3D would fragment the codebase
-- **Real-Time Collaborative Editing** — Single prompt → single video is the core workflow
-- **Native Mobile App** — Web-only is correct priority; responsive web covers mobile viewing
-- **Auto-Deployment** — Manual deployment is acceptable for target users
-- **Video Hosting** — Users download and upload to their platform of choice
-- **User Authentication** — No multi-user features; rate limiting via API key is sufficient
-- **Generated Video Editing** — Against the "single prompt → complete video" simplicity
-- **Real-Time Generation Streaming** — Manim rendering is inherently batch
-- **Multiple Animation Styles** — 3b1b-style is the brand; custom themes would dilute quality
+- **Native mobile app** — Web-only is correct priority
+- **Real-time collaborative editing** — Single prompt → single video
+- **3D animations** — 2D Manim CE focus
+- **Auto-deployment** — Manual deployment acceptable
+
+---
 
 ## Traceability
 
 | Requirement | Phase | Success Criteria |
 |-------------|-------|------------------|
-| GEN-01, GEN-02, GEN-03 | Phase 1 | Prompt → rendered video end-to-end |
-| QUAL-01, QUAL-02, QUAL-03, HEAL-01, HEAL-02, HEAL-03 | Phase 2 | Self-healing works for common errors |
-| DOM-01 | Phase 3 | Math domain uses deterministic compiler |
-| VOIC-01, VOIC-02, VOIC-03, VOIC-04 | Phase 4 | Narrated video with synced audio |
-| RAG-01, RAG-02, RAG-03 | Phase 5 | RAG improves generation quality |
-| EVAL-01, EVAL-02, EVAL-03 | Phase 6 | Quality scores visible and tracked |
+| M3-VID-01, M3-VID-02 | Phase 9 | Video playback works |
+| M3-VID-03, M3-VID-04 | Phase 9 | CDN + search functional |
+| M3-STYLE-01, M3-STYLE-02 | Phase 10 | Theme + watermark |
+| M3-STYLE-03, M3-STYLE-04 | Phase 10 | Intro/outro + palette |
+| M3-PERF-01, M3-PERF-02 | Phase 11 | Caching + parallel |
+| M3-PERF-03, M3-PERF-04 | Phase 11 | Code cache + preload |
+| M3-API-01, M3-API-02 | Phase 12 | Webhooks + LMS |
+| M3-API-03, M3-API-04 | Phase 12 | API keys + batch |
 
 ---
 
-*Requirements defined: 2026-04-04*
+*Requirements defined: 2026-04-05 for Milestone 3*
