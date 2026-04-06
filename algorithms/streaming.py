@@ -278,7 +278,9 @@ def split_plan_into_scenes(plan_data: dict, max_scenes: int = 20) -> List[dict]:
             }
         )
 
-    return _ensure_min_scene_count(scenes, plan_data)
+    scenes = _ensure_min_scene_count(scenes, plan_data)
+    scenes = _dedupe_similar_scenes(scenes)
+    return scenes
 
 
 def _ensure_min_scene_count(scenes: List[dict], plan_data: dict) -> List[dict]:
@@ -317,6 +319,54 @@ def _ensure_min_scene_count(scenes: List[dict], plan_data: dict) -> List[dict]:
         )
 
     return expanded or scenes
+
+
+def _tokenize_for_similarity(text: str) -> set:
+    words = re.findall(r"[a-zA-Z0-9]+", (text or "").lower())
+    stop = {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "to",
+        "of",
+        "in",
+        "on",
+        "for",
+        "with",
+        "scene",
+        "part",
+    }
+    return {w for w in words if w not in stop and len(w) > 2}
+
+
+def _jaccard(a: set, b: set) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return len(a & b) / max(1, len(a | b))
+
+
+def _dedupe_similar_scenes(scenes: List[dict], threshold: float = 0.78) -> List[dict]:
+    """Remove near-duplicate scenes from plan output to avoid repeated segments."""
+    if len(scenes) <= 1:
+        return scenes
+
+    deduped = []
+    seen_tokens: List[set] = []
+    for s in scenes:
+        desc = s.get("description", "")
+        toks = _tokenize_for_similarity(desc)
+        is_dup = any(_jaccard(toks, prev) >= threshold for prev in seen_tokens)
+        if is_dup:
+            continue
+        deduped.append(s)
+        seen_tokens.append(toks)
+
+    # keep at least 1 scene
+    return deduped or scenes[:1]
 
 
 def _beats_to_scene(scene_id: str, beats: List[dict], plan_data: dict) -> dict:
@@ -497,6 +547,17 @@ def generate_scene(
     # Build generation prompt
     prompt = _build_scene_prompt(scene_plan, context, duration_hint)
 
+    # Anti-repeat guard: don't let scene regenerate near-identical recent content
+    recent_ctx = "\n".join(context.scene_history[-3:])
+    if recent_ctx:
+        prompt += (
+            "\n\nANTI-REPEAT CHECK:\n"
+            "- Your scene must add NEW conceptual progress compared to recent scenes.\n"
+            "- Do not restate the same explanation in different words.\n"
+            "- If similar to prior content, skip recap and move to the next logical step.\n"
+            f"Recent scene summaries:\n{recent_ctx}\n"
+        )
+
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
@@ -528,6 +589,22 @@ def generate_scene(
             # Validate basic structure
             if "class GeneratedScene" not in code and "class Scene" not in code:
                 raise ValueError("No Scene class found in generated code")
+
+            # Reject obvious recap/repeat patterns in non-first scenes
+            if scene_num > 0:
+                lowered = code.lower()
+                repeat_markers = [
+                    "let's start",
+                    "in this video",
+                    "we begin",
+                    "introduction",
+                    "recap",
+                    "summary of what we saw",
+                ]
+                if any(m in lowered for m in repeat_markers):
+                    raise ValueError(
+                        "Detected recap/intro pattern in mid-scene; forcing regenerate"
+                    )
 
             print(
                 f"[STREAM] Scene {scene_num} generated in {elapsed:.1f}s ({len(code)} chars)"
