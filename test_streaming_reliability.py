@@ -19,10 +19,10 @@ import urllib.request
 from pathlib import Path
 
 from config import OUTPUTS
-from test_edge_cases import EDGE_PROMPTS
+from prompt_pool import LONG_RUN_PROMPTS
 
 
-PROMPTS = [spec["prompt"] for spec in EDGE_PROMPTS.values()]
+PROMPTS = [spec["prompt"] for spec in LONG_RUN_PROMPTS.values()]
 
 
 def post_json(url: str, payload: dict, timeout: float = 20.0) -> dict:
