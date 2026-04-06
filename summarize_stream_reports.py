@@ -10,6 +10,21 @@ from pathlib import Path
 REPORT_DIR = Path(r"C:\temp\outputs\stream_reports")
 
 
+def classify_signature(error_text: str) -> str:
+    text = (error_text or "").lower()
+    if "camera" in text and "frame" in text:
+        return "camera_frame"
+    if "interpolate" in text and "str" in text:
+        return "color_string_interpolate"
+    if "indexerror" in text or "list index out of range" in text:
+        return "index_out_of_range"
+    if "timeout" in text:
+        return "timeout"
+    if "syntax error" in text or "was never closed" in text:
+        return "syntax_error"
+    return "other_render"
+
+
 def main() -> int:
     if not REPORT_DIR.exists():
         print(f"No reports found: {REPORT_DIR}")
@@ -48,7 +63,7 @@ def main() -> int:
             full_success += 1
 
         for err in data.get("errors", []):
-            fail_counter[err.get("type", "unknown")] += 1
+            fail_counter[classify_signature(err.get("error", ""))] += 1
 
     print("Streaming Report Summary")
     print("=" * 72)
@@ -63,7 +78,7 @@ def main() -> int:
             f"  {domain:18s} jobs={stats['jobs']:3d} rendered={stats['rendered']:4d}/{stats['planned']:4d} ({ratio:.0%})"
         )
 
-    print("\nTop error types:")
+    print("\nTop error signatures:")
     for name, count in fail_counter.most_common(10):
         print(f"  {name:20s} {count}")
 

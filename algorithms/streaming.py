@@ -914,7 +914,24 @@ def _sanitize_generated_code(code: str) -> str:
         r'average_color(ManimColor("\1"), ManimColor("\2"))',
         code,
     )
+    # Replace common invalid camera frame usages with camera-safe no-ops/comments handled by regeneration.
+    code = code.replace("self.camera.frame", "self.camera")
     return code
+
+
+def classify_render_error(error_text: str) -> str:
+    text = (error_text or "").lower()
+    if "camera" in text and "frame" in text:
+        return "camera_frame"
+    if "interpolate" in text and "str" in text:
+        return "color_string_interpolate"
+    if "indexerror" in text or "list index out of range" in text:
+        return "index_out_of_range"
+    if "syntax error" in text or "was never closed" in text:
+        return "syntax_error"
+    if "timeout" in text:
+        return "timeout"
+    return "other_render"
 
 
 def _update_context_from_scene(
@@ -1159,6 +1176,25 @@ def _find_scene_video(filename: str, scene_num: int) -> Optional[Path]:
     return None
 
 
+def _recover_render_failure(
+    scene_plan: dict,
+    context: NarrativeContext,
+    scene_num: int,
+    error_msg: str,
+    filename: str,
+    job_id: str,
+) -> Tuple[Optional[str], bool, str, NarrativeContext]:
+    """Retry a failed render once using the targeted scene retry path."""
+    try:
+        fixed_code, new_context = retry_scene(scene_plan, context, scene_num, error_msg)
+        video_path, success, retry_error = _render_single_scene(
+            fixed_code, filename, job_id, scene_num
+        )
+        return video_path if success else None, success, retry_error, new_context
+    except Exception as e:
+        return None, False, str(e), context
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PARALLEL RENDER-WHILE-GENERATE
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1242,9 +1278,26 @@ def stream_render_scenes(
                 completed_renders[scene_num - 1] = (video_path, success, error_msg)
 
                 if not success:
-                    errors.append(
-                        {"scene": scene_num - 1, "error": error_msg, "type": "render"}
+                    recovered_path, recovered_ok, recovered_err, context = (
+                        _recover_render_failure(
+                            scenes[scene_num - 1],
+                            context,
+                            scene_num - 1,
+                            error_msg,
+                            filename,
+                            job_id,
+                        )
                     )
+                    if recovered_ok and recovered_path:
+                        completed_renders[scene_num - 1] = (recovered_path, True, "")
+                    else:
+                        errors.append(
+                            {
+                                "scene": scene_num - 1,
+                                "error": error_msg,
+                                "type": classify_render_error(error_msg),
+                            }
+                        )
             except Exception as e:
                 errors.append(
                     {"scene": scene_num - 1, "error": str(e), "type": "render_timeout"}
@@ -1272,12 +1325,33 @@ def stream_render_scenes(
                 completed_renders[scene_num] = (video_path, success, error_msg)
 
                 if not success:
-                    errors.append(
-                        {"scene": scene_num, "error": error_msg, "type": "render"}
+                    recovered_path, recovered_ok, recovered_err, context = (
+                        _recover_render_failure(
+                            scenes[scene_num],
+                            context,
+                            scene_num,
+                            error_msg,
+                            filename,
+                            job_id,
+                        )
                     )
+                    if recovered_ok and recovered_path:
+                        completed_renders[scene_num] = (recovered_path, True, "")
+                    else:
+                        errors.append(
+                            {
+                                "scene": scene_num,
+                                "error": error_msg,
+                                "type": classify_render_error(error_msg),
+                            }
+                        )
             except Exception as e:
                 errors.append(
-                    {"scene": scene_num, "error": str(e), "type": "render_timeout"}
+                    {
+                        "scene": scene_num,
+                        "error": str(e),
+                        "type": classify_render_error(str(e)),
+                    }
                 )
 
     render_executor.shutdown(wait=True)
