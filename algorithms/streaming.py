@@ -169,6 +169,22 @@ VISUAL_TEMPLATES = {
         "accent": "#2563EB",
         "style_notes": "clean CS explainer style, code/data-structure friendly, blue algorithm highlights, organized and readable",
     },
+    "dark-game-theory": {
+        "label": "Dark Game Theory",
+        "mode": "dark",
+        "background_color": "#111827",
+        "foreground_color": "#F9FAFB",
+        "accent": "#F59E0B",
+        "style_notes": "strategic decision-board aesthetic, payoff matrices, highlighted choices, tension between options, elegant dark presentation",
+    },
+    "light-proof": {
+        "label": "Light Proof",
+        "mode": "light",
+        "background_color": "#FFFBF5",
+        "foreground_color": "#1F2937",
+        "accent": "#7C3AED",
+        "style_notes": "clean proof-oriented layout, theorem/proof structure, boxes, arrows, and highlighted contradictions or logical steps",
+    },
 }
 
 
@@ -187,6 +203,19 @@ def choose_visual_template(
         for k in ["matrix", "eigen", "vector", "linear transformation", "svd", "basis"]
     ):
         return "dark-linalg"
+    if any(
+        k in text
+        for k in [
+            "prisoner",
+            "dilemma",
+            "nash",
+            "payoff",
+            "game theory",
+            "strategy",
+            "equilibrium",
+        ]
+    ):
+        return "dark-game-theory"
     if any(
         k in text
         for k in ["graph", "adjacency", "bfs", "dfs", "hamiltonian", "eulerian", "tree"]
@@ -214,9 +243,12 @@ def choose_visual_template(
             "pigeonhole",
             "combinatorics",
             "discrete",
+            "proof",
+            "contradiction",
+            "theorem",
         ]
     ):
-        return "light-discrete"
+        return "light-proof"
     if domain == "physics":
         return "dark-physics"
     if domain in ("computer_science", "cs"):

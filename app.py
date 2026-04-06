@@ -1095,6 +1095,14 @@ def stream_generate_and_render(
         f"[STREAM] Render results: {len(video_paths)} successful, {len(errors)} failed"
     )
 
+    success_ratio = len(video_paths) / max(1, len(scenes))
+    min_success_ratio = 0.75
+    if success_ratio < min_success_ratio:
+        raise RuntimeError(
+            f"Streaming job aborted: only {len(video_paths)}/{len(scenes)} scenes rendered "
+            f"({success_ratio:.0%} < required {min_success_ratio:.0%}). Errors: {errors[:5]}"
+        )
+
     # ── Optional: Scene-level TTS generation and mux ───────────────────
     scene_tts = {}  # scene_num -> {path, duration, error}
     print(f"[STREAM] Voiceover={voiceover}")
