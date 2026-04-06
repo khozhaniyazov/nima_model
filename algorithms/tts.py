@@ -30,7 +30,19 @@ def generate_segment_audio(text: str, output_path: str, voice: str = None) -> fl
     Generate a single TTS audio segment using edge-tts.
     Returns the duration in seconds.
     """
-    voice = voice or EDGE_TTS_VOICE
+    # Always use edge-tts voice, ignore OpenAI voice names
+    if not voice or voice in (
+        "nova",
+        "alloy",
+        "echo",
+        "fable",
+        "onyx",
+        "shimmer",
+        "ash",
+        "coral",
+        "sage",
+    ):
+        voice = EDGE_TTS_VOICE
     print(f'[TTS] Generating: "{text[:60]}..." → {Path(output_path).name}')
 
     import edge_tts

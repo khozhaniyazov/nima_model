@@ -44,8 +44,8 @@ DRAFT_PIPELINE = (
 # ── Voiceover (TTS) ──────────────────────────────────────────────────────────
 TTS_API_KEY = os.getenv("TTS_API_KEY") or OPENAI_API_KEY
 TTS_BASE_URL = os.getenv("TTS_BASE_URL") or OPENAI_BASE_URL
-TTS_MODEL = "tts-1"  # OpenAI-compatible TTS model
-TTS_VOICE = "nova"  # voice preset
+TTS_MODEL = "edge-tts"  # Using edge-tts (free, no API key)
+TTS_VOICE = "en-US-GuyNeural"  # Microsoft neural voice
 ENABLE_VOICEOVER = os.environ.get("ENABLE_VOICEOVER", "true").lower() == "true"
 
 # ── Rate Limiting ────────────────────────────────────────────────────────────
