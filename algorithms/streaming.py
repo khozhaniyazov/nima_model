@@ -195,16 +195,25 @@ class NarrativeContext:
                 "coordinate_system": "2d",
                 "has_axes": False,
                 "latex_mode": True,
+                "background_color": "#0F1117",
+                "foreground_color": "#F5F7FA",
+                "theme_mode": "dark",
             }
         elif domain == "physics":
             ctx.domain_state = {
                 "has_planes": False,
                 "unit_system": "SI",
+                "background_color": "#0F1117",
+                "foreground_color": "#F5F7FA",
+                "theme_mode": "dark",
             }
         elif domain == "computer_science":
             ctx.domain_state = {
                 "has_diagram": False,
                 "code_highlighting": True,
+                "background_color": "#0F1117",
+                "foreground_color": "#F5F7FA",
+                "theme_mode": "dark",
             }
 
         return ctx
@@ -507,6 +516,8 @@ CRITICAL RULES:
 10. NEVER repeat prior scenes or re-introduce already explained concepts unless explicitly asked
 11. This is part of a continuous video: avoid hard resets, avoid "intro"/"summary" recaps in middle scenes
 12. For scene_index > 0, continue from prior context state and focus only on NEW progression
+13. ALL scenes in a job must use the SAME visual theme and SAME background color
+14. Default to dark mode unless explicitly told otherwise
 
 """
 
@@ -798,16 +809,20 @@ def generate_scene_preamble(context: NarrativeContext, scene_plan: dict) -> str:
     For scenes that need objects from previous scenes, this generates
     the setup code to recreate those objects at the scene's start.
     """
-    preamble = ""
+    bg = context.domain_state.get("background_color", "#0F1117")
+    preamble = f'# Scene preamble: keep visual theme consistent\nself.camera.background_color = "{bg}"\n'
 
     # Domain-specific setup
     if context.domain == "math":
         if not context.object_state:
             # First scene: set up axes
-            preamble += """
+            preamble += (
+                """
 # Scene preamble: set up coordinate system
-self.camera.background_color = "#FFFFFF"
+self.camera.background_color = "%s"
 """
+                % bg
+            )
 
     elif context.domain == "physics":
         preamble += """

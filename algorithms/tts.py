@@ -96,6 +96,29 @@ def _get_audio_duration(path: str) -> float:
         return size / 2000.0  # rough estimate
 
 
+def _get_video_duration(path: str) -> float:
+    """Get video duration using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return 10.0  # fallback estimate
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # VOICEOVER PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -230,26 +253,66 @@ def merge_audio_video(
         )
 
     # Merge narration with video
+    # Use -longest (via lavfi) to keep full audio even if video is shorter
+    # This prevents narration from being cut mid-sentence
     print(f"[MERGE] Merging audio + video → {Path(output_path).name}")
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            video_path,
-            "-i",
-            narration_path,
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-shortest",
-            output_path,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+
+    # Get audio duration to check if we need to extend video
+    audio_duration = _get_audio_duration(narration_path)
+    video_duration = _get_video_duration(video_path)
+
+    if audio_duration > video_duration + 0.5:
+        # Audio longer than video — extend video with freeze-frame
+        print(
+            f"[MERGE] Extending video {video_duration:.1f}s → {audio_duration:.1f}s (freeze last frame)"
+        )
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                video_path,
+                "-i",
+                narration_path,
+                "-filter_complex",
+                f"[0:v]tpad=stop_mode=clone:stop_duration={audio_duration - video_duration + 0.5}[v]",
+                "-map",
+                "[v]",
+                "-map",
+                "1:a",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-c:a",
+                "aac",
+                "-shortest",
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    else:
+        # Video longer or equal — just merge, audio ends naturally
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                video_path,
+                "-i",
+                narration_path,
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
 
     if result.returncode == 0 and Path(output_path).exists():
         print(f"[MERGE] [OK] Narrated video: {output_path}")

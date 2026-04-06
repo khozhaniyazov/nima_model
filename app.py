@@ -1241,6 +1241,30 @@ def stream_generate_and_render(
     render_status[job_id]["scene_results"] = scene_results
     render_status[job_id]["repetition_pairs"] = repetition_pairs
 
+    # Persist per-job scene stats for later analysis
+    try:
+        reports_dir = OUTPUTS / "stream_reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        report_path = reports_dir / f"{job_id}.json"
+        report = {
+            "job_id": job_id,
+            "prompt": prompt,
+            "domain": analysis.get("domain"),
+            "duration_target": analysis.get("duration"),
+            "voiceover": voiceover,
+            "planned_scenes": len(scenes),
+            "rendered_scenes": len(video_paths),
+            "failed_scenes": failed_count,
+            "errors": errors,
+            "scene_results": scene_results,
+            "repetition_pairs": repetition_pairs,
+            "video_file": str(final_output),
+        }
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        render_status[job_id]["report_file"] = str(report_path)
+    except Exception as e:
+        print(f"[{job_id}] [WARN] Could not persist stream report: {e}")
+
     print(f"[{job_id}] === STREAMING PIPELINE COMPLETE ===")
     print(f"[{job_id}] Output: {final_output}")
     print(f"[{job_id}] Scenes: {len(scene_results)}, Failed: {failed_count}")
