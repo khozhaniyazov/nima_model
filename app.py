@@ -997,6 +997,7 @@ def stream_generate_and_render(
     voiceover: bool = False,
     voice: str = None,
     visual_template: str = None,
+    intro_outro: dict = None,
 ) -> Tuple[str, List[dict], dict]:
     """
     Streaming scene-by-scene generation with parallel render-while-generate.
@@ -1024,6 +1025,7 @@ def stream_generate_and_render(
         NarrativeContext,
         apply_visual_template,
         choose_visual_template,
+        _render_single_scene,
         split_plan_into_scenes,
         stream_render_scenes,
         stitch_scenes,
@@ -1154,6 +1156,40 @@ def stream_generate_and_render(
             if success and vp:
                 video_paths.append(vp)
 
+    # ── Optional: Intro/outro scenes ───────────────────────────────────
+    intro_outro = intro_outro or {}
+    if intro_outro.get("enabled"):
+        bg = narrative_context.domain_state.get("background_color", "#0F1117")
+        fg = narrative_context.domain_state.get("foreground_color", "#F5F7FA")
+
+        def _render_text_card(card_text: str, suffix: str) -> str | None:
+            if not card_text:
+                return None
+            safe = card_text.replace('"', '\\"')
+            code = f'''from manim import *
+class GeneratedScene(Scene):
+    def construct(self):
+        self.camera.background_color = "{bg}"
+        title = Text("{safe}", font_size=48, color="{fg}")
+        subtitle = Text("NIMA", font_size=22, color="{fg}").next_to(title, DOWN, buff=0.4)
+        self.play(FadeIn(title, shift=UP*0.3), FadeIn(subtitle, shift=DOWN*0.3), run_time=1.2)
+        self.wait(2.2)
+        self.play(FadeOut(title), FadeOut(subtitle), run_time=0.8)
+'''
+            path, ok, _ = _render_single_scene(code, filename, job_id, suffix)
+            return path if ok and path else None
+
+        intro_path = _render_text_card(
+            (intro_outro.get("introText") or "").strip(), "intro"
+        )
+        outro_path = _render_text_card(
+            (intro_outro.get("outroText") or "").strip(), "outro"
+        )
+        if intro_path:
+            video_paths = [intro_path] + video_paths
+        if outro_path:
+            video_paths = video_paths + [outro_path]
+
     # ── Step 6: Stitch scenes into final video ─────────────────────────
     if len(video_paths) == 0:
         raise RuntimeError(f"All scenes failed to render: {errors}")
@@ -1218,12 +1254,21 @@ def stream_generate_and_render(
                         {"scene_i": i, "scene_j": j, "score": round(score, 3)}
                     )
 
+    errors_by_scene = {}
+    for err in errors:
+        scene_idx = err.get("scene")
+        if scene_idx is None:
+            continue
+        errors_by_scene.setdefault(scene_idx, []).append(
+            err.get("error") or err.get("type") or "Unknown error"
+        )
+
     scene_results = []
     for i, scene in enumerate(scenes):
-        status = "done" if i < len(video_paths) else "failed"
+        status = "failed" if i in errors_by_scene else "done"
         error_info = None
-        if i >= len(video_paths) and i < len(errors):
-            error_info = errors[i].get("error", "Unknown error")
+        if i in errors_by_scene:
+            error_info = " | ".join(errors_by_scene[i])
 
         scene_results.append(
             {
@@ -1231,7 +1276,16 @@ def stream_generate_and_render(
                 "scene_id": scene.get("scene_id", f"scene_{i}"),
                 "description": scene.get("description", "")[:100],
                 "status": status,
-                "video_path": video_paths[i] if i < len(video_paths) else None,
+                "video_path": None
+                if status == "failed"
+                else next(
+                    (
+                        vp
+                        for idx, (vp, ok, _) in completed_renders.items()
+                        if idx == i and ok and vp
+                    ),
+                    None,
+                ),
                 "error": error_info,
             }
         )
@@ -1298,11 +1352,12 @@ def stream_render_async(
     voiceover: bool = False,
     voice: str = None,
     visual_template: str = None,
+    intro_outro: dict = None,
 ):
     """Non-blocking wrapper for stream_generate_and_render."""
     t = threading.Thread(
         target=stream_generate_and_render,
-        args=(prompt, job_id, analysis, voiceover, voice, visual_template),
+        args=(prompt, job_id, analysis, voiceover, voice, visual_template, intro_outro),
         daemon=True,
     )
     t.start()
@@ -2123,6 +2178,7 @@ def api_generate():
                             voiceover=use_voiceover,
                             voice=use_voice,
                             visual_template=render_template,
+                            intro_outro=intro_outro_settings,
                         )
                     )
                     job_to_request[job_id] = {"request_id": None, "prompt": prompt}
