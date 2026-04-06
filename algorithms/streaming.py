@@ -707,6 +707,8 @@ CRITICAL RULES:
 12. For scene_index > 0, continue from prior context state and focus only on NEW progression
 13. ALL scenes in a job must use the SAME visual theme and SAME background color
 14. Default to dark mode unless explicitly told otherwise
+15. NEVER use self.camera.frame or camera.frame unless the scene explicitly subclasses MovingCameraScene (it does not here)
+16. Do not call average_color() with raw string hex values; use explicit Manim colors only
 
 """
 
@@ -778,6 +780,7 @@ def generate_scene(
 
             # Extract code from markdown if present
             code = _extract_manim_code(full_code)
+            code = _sanitize_generated_code(code)
 
             # Validate syntax early to force retry before render
             from algorithms.code_digest import validate_python_syntax
@@ -785,6 +788,11 @@ def generate_scene(
             syntax_ok, syntax_err = validate_python_syntax(code)
             if not syntax_ok:
                 raise ValueError(f"Syntax error: {syntax_err}")
+
+            if "self.camera.frame" in code or ".camera.frame" in code:
+                raise ValueError(
+                    "Invalid camera.frame usage in Scene; regenerate without MovingCameraScene APIs"
+                )
 
             # Validate basic structure
             if "class GeneratedScene" not in code and "class Scene" not in code:
@@ -893,6 +901,22 @@ def _extract_manim_code(text: str) -> str:
     return text.strip()
 
 
+def _sanitize_generated_code(code: str) -> str:
+    """Apply targeted repairs for recurring Manim generation mistakes."""
+    # Repair average_color("#hex", "#hex") into ManimColor-wrapped args.
+    code = re.sub(
+        r'average_color\(\s*"(#?[A-Fa-f0-9]{3,8})"\s*,\s*"(#?[A-Fa-f0-9]{3,8})"\s*\)',
+        r'average_color(ManimColor("\1"), ManimColor("\2"))',
+        code,
+    )
+    code = re.sub(
+        r"average_color\(\s*'(#?[A-Fa-f0-9]{3,8})'\s*,\s*'(#?[A-Fa-f0-9]{3,8})'\s*\)",
+        r'average_color(ManimColor("\1"), ManimColor("\2"))',
+        code,
+    )
+    return code
+
+
 def _update_context_from_scene(
     context: NarrativeContext,
     code: str,
@@ -979,6 +1003,10 @@ Fix the code to resolve the render error. Return ONLY the corrected Python code.
 
     full_code = "".join(code_chunks)
     code = _extract_manim_code(full_code)
+    code = _sanitize_generated_code(code)
+
+    if "self.camera.frame" in code or ".camera.frame" in code:
+        raise ValueError("Retry still used invalid camera.frame API")
 
     # Update context
     context = _update_context_from_scene(context, code, f"[RETRY] {scene_desc}")
