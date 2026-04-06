@@ -1,49 +1,58 @@
 """
 TTS module for NIMA voiceover pipeline.
-Generates narration audio segments using OpenAI TTS, measures durations,
-and merges audio with rendered Manim video via ffmpeg.
+Generates narration audio segments using edge-tts (Microsoft Edge TTS),
+measures durations, and merges audio with rendered Manim video via ffmpeg.
 """
 
 import os
 import subprocess
 import json
+import asyncio
 from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from config import OPENAI_API_KEY, TTS_MODEL, TTS_VOICE
-
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Default voice for edge-tts (Microsoft neural voices)
+EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-GuyNeural")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# AUDIO GENERATION
+# AUDIO GENERATION (edge-tts)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 def generate_segment_audio(text: str, output_path: str, voice: str = None) -> float:
     """
-    Generate a single TTS audio segment.
+    Generate a single TTS audio segment using edge-tts.
     Returns the duration in seconds.
     """
-    voice = voice or TTS_VOICE
+    voice = voice or EDGE_TTS_VOICE
     print(f'[TTS] Generating: "{text[:60]}..." → {Path(output_path).name}')
 
-    response = client.audio.speech.create(
-        model=TTS_MODEL,
-        voice=voice,
-        input=text,
-        response_format="mp3",
-    )
+    import edge_tts
 
-    with open(output_path, "wb") as f:
-        for chunk in response.iter_bytes():
-            f.write(chunk)
+    async def _generate():
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(output_path)
+
+    # Run async edge-tts in sync context
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Already in async context — run in new thread
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(lambda: asyncio.run(_generate())).result(timeout=30)
+    else:
+        asyncio.run(_generate())
 
     duration = _get_audio_duration(output_path)
     print(f"[TTS] [OK] {Path(output_path).name}: {duration:.2f}s")

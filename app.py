@@ -1091,6 +1091,7 @@ def stream_generate_and_render(
 
     # ── Optional: Scene-level TTS generation and mux ───────────────────
     scene_tts = {}  # scene_num -> {path, duration, error}
+    print(f"[STREAM] Voiceover={voiceover}")
     if voiceover:
         render_status[job_id]["message"] = "Generating scene voiceovers..."
         tts_segments = []
