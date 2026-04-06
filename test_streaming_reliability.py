@@ -117,20 +117,41 @@ def run_one(
 
         time.sleep(poll_interval)
 
+    scene_results = last.get("scene_results", []) if isinstance(last, dict) else []
+    planned_scenes = len(scene_results)
+    failed_scenes = sum(
+        1 for s in scene_results if (s.get("status") or "").lower() == "failed"
+    )
+    rendered_scenes = sum(
+        1 for s in scene_results if (s.get("status") or "").lower() == "done"
+    )
+    success_ratio = rendered_scenes / max(1, planned_scenes) if planned_scenes else 0.0
+    repetition_pairs = (
+        last.get("repetition_pairs", []) if isinstance(last, dict) else []
+    )
+    max_repetition = 0.0
+    for pair in repetition_pairs:
+        try:
+            max_repetition = max(max_repetition, float(pair.get("score", 0.0)))
+        except Exception:
+            pass
+
     return {
         "job_id": job_id,
-        "status": "timeout",
+        "status": "timeout_partial" if planned_scenes > 0 else "timeout",
         "message": f"No terminal status within {timeout_s}s",
         "elapsed": time.time() - t0,
         "video_file": last.get("video_file", "") if isinstance(last, dict) else "",
-        "video_exists": False,
-        "repetition_pairs": [],
-        "max_repetition": 0.0,
-        "planned_scenes": 0,
-        "rendered_scenes": 0,
-        "failed_scenes": 0,
-        "scene_success_ratio": 0.0,
-        "scene_results": [],
+        "video_exists": video_exists(last.get("video_file", ""))
+        if isinstance(last, dict)
+        else False,
+        "repetition_pairs": repetition_pairs,
+        "max_repetition": max_repetition,
+        "planned_scenes": planned_scenes,
+        "rendered_scenes": rendered_scenes,
+        "failed_scenes": failed_scenes,
+        "scene_success_ratio": success_ratio,
+        "scene_results": scene_results,
     }
 
 
