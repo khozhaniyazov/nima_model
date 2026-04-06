@@ -94,6 +94,13 @@ def run_one(
         status = (last.get("status") or "").lower()
         if status in ("done", "error"):
             vf = last.get("video_file", "")
+            repetition_pairs = last.get("repetition_pairs", [])
+            max_repetition = 0.0
+            for pair in repetition_pairs:
+                try:
+                    max_repetition = max(max_repetition, float(pair.get("score", 0.0)))
+                except Exception:
+                    pass
             return {
                 "job_id": job_id,
                 "status": status,
@@ -101,6 +108,8 @@ def run_one(
                 "elapsed": time.time() - t0,
                 "video_file": vf,
                 "video_exists": video_exists(vf),
+                "repetition_pairs": repetition_pairs,
+                "max_repetition": max_repetition,
             }
 
         time.sleep(poll_interval)
@@ -112,6 +121,8 @@ def run_one(
         "elapsed": time.time() - t0,
         "video_file": last.get("video_file", "") if isinstance(last, dict) else "",
         "video_exists": False,
+        "repetition_pairs": [],
+        "max_repetition": 0.0,
     }
 
 
@@ -149,18 +160,22 @@ def main() -> int:
                 "elapsed": 0.0,
                 "video_file": "",
                 "video_exists": False,
+                "repetition_pairs": [],
+                "max_repetition": 0.0,
             }
 
         results.append(res)
         print(
             f"  -> status={res['status']} job={res.get('job_id')} "
-            f"time={res['elapsed']:.1f}s video={res.get('video_file', '')} exists={res['video_exists']}"
+            f"time={res['elapsed']:.1f}s video={res.get('video_file', '')} "
+            f"exists={res['video_exists']} max_repeat={res.get('max_repetition', 0.0):.3f}"
         )
         if res.get("message"):
             print(f"     message: {res['message']}")
 
     ok = [r for r in results if r["status"] == "done" and r["video_exists"]]
     fail = [r for r in results if r not in ok]
+    repeat_flag = [r for r in results if r.get("max_repetition", 0.0) >= 0.75]
     avg = sum(r["elapsed"] for r in ok) / len(ok) if ok else 0.0
 
     print("\n" + "=" * 72)
@@ -168,6 +183,7 @@ def main() -> int:
     print(f"Success: {len(ok)}/{len(results)}")
     print(f"Failure: {len(fail)}/{len(results)}")
     print(f"Avg successful runtime: {avg:.1f}s")
+    print(f"Repetition-flagged jobs (>=0.75): {len(repeat_flag)}")
 
     if fail:
         print("\nFailures:")
@@ -177,8 +193,16 @@ def main() -> int:
                 f"exists={r['video_exists']} msg={r.get('message', '')}"
             )
 
-    # Exit non-zero if not 100% reliable
-    return 0 if len(ok) == len(results) else 1
+    if repeat_flag:
+        print("\nRepetition flags:")
+        for idx, r in enumerate(repeat_flag, 1):
+            print(
+                f"  {idx}. job={r.get('job_id')} max_repeat={r.get('max_repetition', 0.0):.3f} "
+                f"pairs={r.get('repetition_pairs', [])}"
+            )
+
+    # Exit non-zero if not 100% reliable or repetition too high
+    return 0 if (len(ok) == len(results) and len(repeat_flag) == 0) else 1
 
 
 if __name__ == "__main__":

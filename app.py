@@ -1028,6 +1028,7 @@ def stream_generate_and_render(
         STREAM_MAX_SCENES,
         STREAM_SCENE_RETRIES,
     )
+    from algorithms.tts import generate_voiceover, merge_audio_video
     from algorithms.request_analysis import analyze_request_type
     from algorithms.plan.schema import validate_plan_dict
     import json
@@ -1076,7 +1077,7 @@ def stream_generate_and_render(
     render_status[job_id]["message"] = f"Generating {len(scenes)} scenes..."
     filename = f"video_{job_id}"
 
-    video_paths, final_context, errors = stream_render_scenes(
+    video_paths, final_context, errors, completed_renders = stream_render_scenes(
         scenes=scenes,
         job_id=job_id,
         narrative_context=narrative_context,
@@ -1087,6 +1088,56 @@ def stream_generate_and_render(
     print(
         f"[STREAM] Render results: {len(video_paths)} successful, {len(errors)} failed"
     )
+
+    # ── Optional: Scene-level TTS generation and mux ───────────────────
+    scene_tts = {}  # scene_num -> {path, duration, error}
+    if voiceover:
+        render_status[job_id]["message"] = "Generating scene voiceovers..."
+        tts_segments = []
+        for i, seg in enumerate(plan_data.get("segments", [])):
+            tts_segments.append(
+                {
+                    "id": f"scene_{i}",
+                    "narration": seg.get("narration", "").strip(),
+                    "estimated_duration": seg.get("estimated_duration", 8),
+                }
+            )
+        tts_dir = str(OUTPUTS / f"tts_{job_id}")
+        try:
+            tts_results = generate_voiceover(tts_segments, tts_dir, voice=voice)
+            scene_tts = {
+                int(k.split("_")[-1]): v for k, v in tts_results.items() if "_" in k
+            }
+        except Exception as e:
+            print(f"[STREAM] [WARN] Scene TTS generation failed: {e}")
+            scene_tts = {}
+
+        # Mux per-scene audio where available
+        for scene_num, payload in list(completed_renders.items()):
+            video_path, success, err = payload
+            if not success or not video_path:
+                continue
+            tts_payload = scene_tts.get(scene_num)
+            if not tts_payload or not tts_payload.get("path"):
+                continue
+            narrated_scene = str(
+                Path(video_path).with_name(f"{Path(video_path).stem}_tts.mp4")
+            )
+            merged = merge_audio_video(
+                video_path,
+                {f"scene_{scene_num}": tts_payload},
+                [f"scene_{scene_num}"],
+                narrated_scene,
+            )
+            if merged and Path(merged).exists():
+                completed_renders[scene_num] = (merged, True, "")
+
+        # Rebuild ordered video_paths from completed_renders after mux
+        video_paths = []
+        for scene_num in sorted(completed_renders.keys()):
+            vp, success, _ = completed_renders[scene_num]
+            if success and vp:
+                video_paths.append(vp)
 
     # ── Step 6: Stitch scenes into final video ─────────────────────────
     if len(video_paths) == 0:
@@ -1110,7 +1161,48 @@ def stream_generate_and_render(
             print(f"[STREAM] Stitch failed: {e} — using first scene")
             final_output = video_paths[0]
 
-    # ── Step 7: Build scene results summary ────────────────────────────
+    # ── Step 7: Build scene results summary + repetition analysis ──────
+    repetition_pairs = []
+    if plan_data.get("segments"):
+        texts = [s.get("narration", "") for s in plan_data.get("segments", [])]
+
+        def _tok(t):
+            import re
+
+            stop = {
+                "the",
+                "a",
+                "an",
+                "and",
+                "or",
+                "to",
+                "of",
+                "in",
+                "on",
+                "for",
+                "with",
+                "this",
+                "that",
+                "is",
+                "are",
+            }
+            ws = re.findall(r"[a-zA-Z0-9]+", (t or "").lower())
+            return {w for w in ws if w not in stop and len(w) > 2}
+
+        def _jac(a, b):
+            if not a or not b:
+                return 0.0
+            return len(a & b) / max(1, len(a | b))
+
+        toks = [_tok(t) for t in texts]
+        for i in range(len(toks)):
+            for j in range(i + 1, len(toks)):
+                score = _jac(toks[i], toks[j])
+                if score >= 0.75:
+                    repetition_pairs.append(
+                        {"scene_i": i, "scene_j": j, "score": round(score, 3)}
+                    )
+
     scene_results = []
     for i, scene in enumerate(scenes):
         status = "done" if i < len(video_paths) else "failed"
@@ -1146,10 +1238,15 @@ def stream_generate_and_render(
 
     render_status[job_id]["video_file"] = Path(final_output).name
     render_status[job_id]["scene_results"] = scene_results
+    render_status[job_id]["repetition_pairs"] = repetition_pairs
 
     print(f"[{job_id}] === STREAMING PIPELINE COMPLETE ===")
     print(f"[{job_id}] Output: {final_output}")
     print(f"[{job_id}] Scenes: {len(scene_results)}, Failed: {failed_count}")
+    if repetition_pairs:
+        print(
+            f"[{job_id}] [REPEAT] potential repeated narration pairs: {repetition_pairs}"
+        )
 
     return final_output, scene_results, final_context
 

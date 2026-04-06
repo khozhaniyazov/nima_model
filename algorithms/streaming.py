@@ -938,7 +938,7 @@ def stream_render_scenes(
     narrative_context: NarrativeContext,
     filename: str,
     max_scene_retries: int = 2,
-) -> Tuple[List[str], NarrativeContext, List[dict]]:
+) -> Tuple[List[str], NarrativeContext, List[dict], Dict[int, Tuple[str, bool, str]]]:
     """
     Render scenes in parallel while generating the next scene.
 
@@ -959,7 +959,7 @@ def stream_render_scenes(
         max_scene_retries: Max retries per scene
 
     Returns:
-        Tuple of (video_paths, final_context, errors)
+        Tuple of (video_paths, final_context, errors, completed_renders)
     """
     video_paths = []
     errors = []
@@ -1061,7 +1061,7 @@ def stream_render_scenes(
         f"[STREAM] Pipeline complete: {len(video_paths)} scenes rendered, {len(errors)} errors"
     )
 
-    return video_paths, context, errors
+    return video_paths, context, errors, completed_renders
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
