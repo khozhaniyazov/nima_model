@@ -84,6 +84,15 @@ def run_one(
         if status in ("done", "error"):
             vf = last.get("video_file", "")
             repetition_pairs = last.get("repetition_pairs", [])
+            scene_results = last.get("scene_results", []) or []
+            planned_scenes = len(scene_results)
+            failed_scenes = sum(
+                1 for s in scene_results if (s.get("status") or "").lower() == "failed"
+            )
+            rendered_scenes = sum(
+                1 for s in scene_results if (s.get("status") or "").lower() == "done"
+            )
+            success_ratio = rendered_scenes / max(1, planned_scenes)
             max_repetition = 0.0
             for pair in repetition_pairs:
                 try:
@@ -99,6 +108,11 @@ def run_one(
                 "video_exists": video_exists(vf),
                 "repetition_pairs": repetition_pairs,
                 "max_repetition": max_repetition,
+                "planned_scenes": planned_scenes,
+                "rendered_scenes": rendered_scenes,
+                "failed_scenes": failed_scenes,
+                "scene_success_ratio": success_ratio,
+                "scene_results": scene_results,
             }
 
         time.sleep(poll_interval)
@@ -112,6 +126,11 @@ def run_one(
         "video_exists": False,
         "repetition_pairs": [],
         "max_repetition": 0.0,
+        "planned_scenes": 0,
+        "rendered_scenes": 0,
+        "failed_scenes": 0,
+        "scene_success_ratio": 0.0,
+        "scene_results": [],
     }
 
 
@@ -156,13 +175,19 @@ def main() -> int:
                 "video_exists": False,
                 "repetition_pairs": [],
                 "max_repetition": 0.0,
+                "planned_scenes": 0,
+                "rendered_scenes": 0,
+                "failed_scenes": 0,
+                "scene_success_ratio": 0.0,
+                "scene_results": [],
             }
 
         results.append(res)
         print(
             f"  -> status={res['status']} job={res.get('job_id')} "
             f"time={res['elapsed']:.1f}s video={res.get('video_file', '')} "
-            f"exists={res['video_exists']} max_repeat={res.get('max_repetition', 0.0):.3f}"
+            f"exists={res['video_exists']} scenes={res.get('rendered_scenes', 0)}/{res.get('planned_scenes', 0)} "
+            f"max_repeat={res.get('max_repetition', 0.0):.3f}"
         )
         if res.get("message"):
             print(f"     message: {res['message']}")
@@ -170,6 +195,7 @@ def main() -> int:
     ok = [r for r in results if r["status"] == "done" and r["video_exists"]]
     fail = [r for r in results if r not in ok]
     repeat_flag = [r for r in results if r.get("max_repetition", 0.0) >= 0.75]
+    partial_scene_fail = [r for r in results if r.get("failed_scenes", 0) > 0]
     avg = sum(r["elapsed"] for r in ok) / len(ok) if ok else 0.0
 
     print("\n" + "=" * 72)
@@ -178,6 +204,7 @@ def main() -> int:
     print(f"Failure: {len(fail)}/{len(results)}")
     print(f"Avg successful runtime: {avg:.1f}s")
     print(f"Repetition-flagged jobs (>=0.75): {len(repeat_flag)}")
+    print(f"Jobs with failed scenes: {len(partial_scene_fail)}")
 
     if fail:
         print("\nFailures:")
@@ -194,6 +221,23 @@ def main() -> int:
                 f"  {idx}. job={r.get('job_id')} max_repeat={r.get('max_repetition', 0.0):.3f} "
                 f"pairs={r.get('repetition_pairs', [])}"
             )
+
+    if partial_scene_fail:
+        print("\nJobs with failed scenes:")
+        for idx, r in enumerate(partial_scene_fail, 1):
+            print(
+                f"  {idx}. job={r.get('job_id')} scenes={r.get('rendered_scenes', 0)}/{r.get('planned_scenes', 0)} "
+                f"failed={r.get('failed_scenes', 0)} msg={r.get('message', '')}"
+            )
+            failed_scene_details = [
+                s
+                for s in r.get("scene_results", [])
+                if (s.get("status") or "").lower() == "failed"
+            ]
+            for s in failed_scene_details:
+                print(
+                    f"     - scene={s.get('scene_num')} id={s.get('scene_id')} reason={s.get('error') or 'unknown'}"
+                )
 
     # Exit non-zero if not 100% reliable or repetition too high
     return 0 if (len(ok) == len(results) and len(repeat_flag) == 0) else 1
