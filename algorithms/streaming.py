@@ -88,6 +88,143 @@ STREAM_MAX_SCENES = 20  # max scenes per video
 STREAM_SCENE_RETRIES = 3  # retries per scene on failure
 STREAM_MIN_SCENES = 2  # minimum scenes for long outputs
 
+VISUAL_TEMPLATES = {
+    "dark-blueprint": {
+        "label": "Dark Blueprint",
+        "mode": "dark",
+        "background_color": "#0F1117",
+        "foreground_color": "#F5F7FA",
+        "accent": "#58C4DD",
+        "style_notes": "technical, blueprint-like, neon cyan accents, high contrast, cinematic dark UI",
+    },
+    "dark-cinema": {
+        "label": "Dark Cinema",
+        "mode": "dark",
+        "background_color": "#101418",
+        "foreground_color": "#F6F1E9",
+        "accent": "#FFB86C",
+        "style_notes": "dramatic dark mode, warm highlights, elegant math presentation, minimal HUD",
+    },
+    "light-notebook": {
+        "label": "Light Notebook",
+        "mode": "light",
+        "background_color": "#FAF7F0",
+        "foreground_color": "#202124",
+        "accent": "#2563EB",
+        "style_notes": "clean academic notebook style, paper-like background, blue emphasis, readable annotations",
+    },
+    "light-minimal": {
+        "label": "Light Minimal",
+        "mode": "light",
+        "background_color": "#FFFFFF",
+        "foreground_color": "#111827",
+        "accent": "#14B8A6",
+        "style_notes": "minimal bright presentation, sparse layout, clean geometry, modern explainer aesthetic",
+    },
+    "dark-linalg": {
+        "label": "Dark Linear Algebra",
+        "mode": "dark",
+        "background_color": "#0B1020",
+        "foreground_color": "#E5EEF8",
+        "accent": "#8B5CF6",
+        "style_notes": "precise linear algebra style, dark indigo background, matrix-focused, vectors and transforms glow subtly",
+    },
+    "dark-graph": {
+        "label": "Dark Graph Theory",
+        "mode": "dark",
+        "background_color": "#0E141B",
+        "foreground_color": "#F3F4F6",
+        "accent": "#22C55E",
+        "style_notes": "network/graph aesthetic, dark slate background, nodes and edges with strong green highlights, algorithmic feel",
+    },
+    "light-calculus": {
+        "label": "Light Calculus",
+        "mode": "light",
+        "background_color": "#FFFDF7",
+        "foreground_color": "#1F2937",
+        "accent": "#DC2626",
+        "style_notes": "clean calculus whiteboard, warm paper background, red highlights for tangents, areas, limits and derivatives",
+    },
+    "light-discrete": {
+        "label": "Light Discrete",
+        "mode": "light",
+        "background_color": "#F8FAFC",
+        "foreground_color": "#0F172A",
+        "accent": "#7C3AED",
+        "style_notes": "clear discrete math style, structured boxes/arrows, crisp labels, ideal for proofs, graphs, sets, and combinatorics",
+    },
+    "dark-physics": {
+        "label": "Dark Physics",
+        "mode": "dark",
+        "background_color": "#050816",
+        "foreground_color": "#E0F2FE",
+        "accent": "#38BDF8",
+        "style_notes": "deep-space physics aesthetic, dark cosmic background, luminous vectors/fields/waves, cinematic scientific style",
+    },
+    "light-cs": {
+        "label": "Light Computer Science",
+        "mode": "light",
+        "background_color": "#F9FAFB",
+        "foreground_color": "#111827",
+        "accent": "#2563EB",
+        "style_notes": "clean CS explainer style, code/data-structure friendly, blue algorithm highlights, organized and readable",
+    },
+}
+
+
+def choose_visual_template(
+    prompt: str, analysis: dict, explicit_template: str | None = None
+) -> str:
+    """Choose a render template by explicit request, domain, and concept keywords."""
+    if explicit_template and explicit_template in VISUAL_TEMPLATES:
+        return explicit_template
+
+    text = f"{prompt} {analysis.get('domain', '')}".lower()
+    domain = (analysis.get("domain") or "").lower()
+
+    if any(
+        k in text
+        for k in ["matrix", "eigen", "vector", "linear transformation", "svd", "basis"]
+    ):
+        return "dark-linalg"
+    if any(
+        k in text
+        for k in ["graph", "adjacency", "bfs", "dfs", "hamiltonian", "eulerian", "tree"]
+    ):
+        return "dark-graph"
+    if any(
+        k in text
+        for k in [
+            "integral",
+            "derivative",
+            "limit",
+            "laplace",
+            "taylor",
+            "epsilon",
+            "delta",
+        ]
+    ):
+        return "light-calculus"
+    if any(
+        k in text
+        for k in [
+            "subgroup",
+            "set",
+            "bijection",
+            "pigeonhole",
+            "combinatorics",
+            "discrete",
+        ]
+    ):
+        return "light-discrete"
+    if domain == "physics":
+        return "dark-physics"
+    if domain in ("computer_science", "cs"):
+        return "light-cs"
+    if domain == "math":
+        return "dark-blueprint"
+    return "dark-blueprint"
+
 
 def _select_provider() -> str:
     """Auto-select working provider based on availability."""
@@ -217,6 +354,26 @@ class NarrativeContext:
             }
 
         return ctx
+
+
+def apply_visual_template(
+    context: NarrativeContext, template_id: str | None
+) -> NarrativeContext:
+    """Apply a curated visual template to the whole streaming job."""
+    template_id = template_id or "dark-blueprint"
+    tpl = VISUAL_TEMPLATES.get(template_id, VISUAL_TEMPLATES["dark-blueprint"])
+    context.domain_state.update(
+        {
+            "template_id": template_id,
+            "template_label": tpl["label"],
+            "theme_mode": tpl["mode"],
+            "background_color": tpl["background_color"],
+            "foreground_color": tpl["foreground_color"],
+            "accent_color": tpl["accent"],
+            "style_notes": tpl["style_notes"],
+        }
+    )
+    return context
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -996,6 +996,7 @@ def stream_generate_and_render(
     analysis: dict = None,
     voiceover: bool = False,
     voice: str = None,
+    visual_template: str = None,
 ) -> Tuple[str, List[dict], dict]:
     """
     Streaming scene-by-scene generation with parallel render-while-generate.
@@ -1021,6 +1022,8 @@ def stream_generate_and_render(
     """
     from algorithms.streaming import (
         NarrativeContext,
+        apply_visual_template,
+        choose_visual_template,
         split_plan_into_scenes,
         stream_render_scenes,
         stitch_scenes,
@@ -1069,6 +1072,9 @@ def stream_generate_and_render(
 
     # ── Step 4: Initialize narrative context ───────────────────────────
     narrative_context = NarrativeContext.from_analysis(prompt, analysis)
+    visual_template = choose_visual_template(prompt, analysis, visual_template)
+    narrative_context = apply_visual_template(narrative_context, visual_template)
+    print(f"[STREAM] Visual template: {visual_template}")
     print(
         f"[STREAM] NarrativeContext initialized for {narrative_context.domain} domain"
     )
@@ -1252,6 +1258,7 @@ def stream_generate_and_render(
             "domain": analysis.get("domain"),
             "duration_target": analysis.get("duration"),
             "voiceover": voiceover,
+            "visual_template": visual_template,
             "planned_scenes": len(scenes),
             "rendered_scenes": len(video_paths),
             "failed_scenes": failed_count,
@@ -1282,11 +1289,12 @@ def stream_render_async(
     analysis: dict = None,
     voiceover: bool = False,
     voice: str = None,
+    visual_template: str = None,
 ):
     """Non-blocking wrapper for stream_generate_and_render."""
     t = threading.Thread(
         target=stream_generate_and_render,
-        args=(prompt, job_id, analysis, voiceover, voice),
+        args=(prompt, job_id, analysis, voiceover, voice, visual_template),
         daemon=True,
     )
     t.start()
@@ -2064,6 +2072,7 @@ def api_generate():
     prompt = (data.get("prompt") or "").strip()
     use_voiceover = data.get("voiceover", ENABLE_VOICEOVER)
     use_voice = data.get("voice", TTS_VOICE)
+    render_template = data.get("render_template")
     watermark_settings = data.get("watermark", {})
     intro_outro_settings = data.get("intro_outro", {})
 
@@ -2105,6 +2114,7 @@ def api_generate():
                             analysis=None,
                             voiceover=use_voiceover,
                             voice=use_voice,
+                            visual_template=render_template,
                         )
                     )
                     job_to_request[job_id] = {"request_id": None, "prompt": prompt}
@@ -2277,6 +2287,19 @@ def api_list_templates():
             """)
             templates = [dict(r) for r in cur.fetchall()]
         return jsonify({"templates": templates})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/render-templates", methods=["GET"])
+def api_list_render_templates():
+    """List curated backend render templates for streaming pipeline."""
+    try:
+        from algorithms.streaming import VISUAL_TEMPLATES
+
+        return jsonify(
+            {"templates": [{"id": k, **v} for k, v in VISUAL_TEMPLATES.items()]}
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
