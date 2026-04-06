@@ -177,10 +177,11 @@ def main() -> int:
     if args.domain:
         pool = [(k, v) for k, v in pool if v["domain"] == args.domain]
 
+    random.shuffle(pool)
     if args.pick > 0:
-        pool = random.sample(pool, min(args.pick, len(pool)))
+        pool = pool[: min(args.pick, len(pool))]
     else:
-        pool = pool[: args.count]
+        pool = pool[: min(args.count, len(pool))]
 
     print("NIMA Edge-Case Stress Test")
     print(f"Host: {args.host}")
