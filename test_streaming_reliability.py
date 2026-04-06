@@ -12,28 +12,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from config import OUTPUTS
+from test_edge_cases import EDGE_PROMPTS
 
 
-PROMPTS = [
-    "Explain what a subgroup is using the even integers inside all integers.",
-    "Explain adjacency matrices using a 4-node graph example.",
-    "Explain partial derivatives using temperature T(x,y) on a metal plate.",
-    "Explain chain rule by differentiating (3x^2 + 1)^5.",
-    "Explain eigenvalues and eigenvectors using stretching in one direction.",
-    "Explain uniform continuity using f(x)=x^2 on [0,1].",
-    "Explain Laplace transform for solving y' + 3y = 2.",
-    "Explain probability distribution with a loaded die example.",
-    "Explain integral as area under y=2x from x=0 to x=3.",
-    "Explain Eulerian vs Hamiltonian paths with a graph example.",
-    "Explain kernel of a linear transformation that squashes to a line.",
-    "Explain Markov transition matrix with 3 mood states.",
-]
+PROMPTS = [spec["prompt"] for spec in EDGE_PROMPTS.values()]
 
 
 def post_json(url: str, payload: dict, timeout: float = 20.0) -> dict:
@@ -137,6 +126,7 @@ def main() -> int:
     ap.add_argument(
         "--voiceover", action="store_true", help="Enable voiceover in requests"
     )
+    ap.add_argument("--seed", type=int, default=None, help="Optional RNG seed")
     args = ap.parse_args()
 
     print("Streaming Reliability Harness")
@@ -146,9 +136,13 @@ def main() -> int:
     print(f"Voiceover: {args.voiceover}")
     print("-" * 72)
 
+    prompt_pool = list(PROMPTS)
+    rng = random.Random(args.seed)
+    rng.shuffle(prompt_pool)
+
     results = []
     for i in range(args.count):
-        prompt = PROMPTS[i % len(PROMPTS)]
+        prompt = prompt_pool[i % len(prompt_pool)]
         print(f"[{i + 1}/{args.count}] {prompt}")
         try:
             res = run_one(args.host, prompt, args.timeout, args.poll, args.voiceover)
