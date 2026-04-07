@@ -91,6 +91,70 @@ def _heuristic_analysis_defaults(prompt: str) -> dict:
     }
 
 
+def _fallback_subtopics(prompt: str, domain: str, topic: str) -> list[str]:
+    text = (prompt or "").lower()
+
+    phrase_map = [
+        ("rock-paper-scissors", "rock-paper-scissors"),
+        ("payoff matrix", "payoff matrix"),
+        ("nash equilibrium", "nash equilibrium"),
+        ("wavefunction", "wavefunction"),
+        ("probability amplitudes", "probability amplitudes"),
+        ("energy levels", "energy levels"),
+        ("transition matrix", "transition matrix"),
+        ("central limit theorem", "central limit theorem"),
+        ("dynamic programming", "dynamic programming"),
+        ("coin change", "coin change"),
+        ("open sets", "open sets"),
+        ("closed sets", "closed sets"),
+        ("metric space", "metric space"),
+        ("electron orbitals", "electron orbitals"),
+    ]
+    found = []
+    for needle, label in phrase_map:
+        if needle in text and label not in found:
+            found.append(label)
+
+    stop = {
+        "explain",
+        "teach",
+        "show",
+        "using",
+        "with",
+        "from",
+        "through",
+        "what",
+        "how",
+        "and",
+        "the",
+        "this",
+        "that",
+        "into",
+        "their",
+        "they",
+        "them",
+        "one",
+        "gentle",
+        "introduction",
+        "visualize",
+        "visualise",
+    }
+    words = [w.strip(".,()[]{}") for w in text.split()]
+    words = [w for w in words if len(w) > 3 and w not in stop]
+    for w in words:
+        if w not in found:
+            found.append(w)
+        if len(found) >= 6:
+            break
+
+    if domain == "general" and "game" in text and "equilibrium" not in found:
+        found.append("strategic equilibrium")
+    if domain == "physics" and "wavefunction" in text and "orbitals" not in found:
+        found.append("orbitals")
+
+    return found[:6] or [topic]
+
+
 def _is_codex_model(model: str) -> bool:
     return "codex" in (model or "").lower()
 
@@ -497,7 +561,9 @@ Return ONLY the JSON. No markdown fences, no explanation."""
         import json
 
         topic = analysis.get("topic", "this concept")
-        subtopics = analysis.get("subtopics") or [topic]
+        subtopics = analysis.get("subtopics") or _fallback_subtopics(
+            prompt, analysis.get("domain", "general"), topic
+        )
         duration = int(analysis.get("duration", 60) or 60)
         seg_count = min(10, max(4, len(subtopics) + 2))
         per_seg = max(8, duration // seg_count)
@@ -506,7 +572,7 @@ Return ONLY the JSON. No markdown fences, no explanation."""
             {
                 "id": "scene_1",
                 "title": "Hook / Opening",
-                "narration": f"Let me explain {topic} step by step.",
+                "narration": f"We will build intuition for {topic} step by step, starting from the simplest concrete picture.",
                 "visual_description": f"Introduce {topic} with a clear visual hook and title.",
                 "estimated_duration": per_seg,
             }
@@ -516,7 +582,7 @@ Return ONLY the JSON. No markdown fences, no explanation."""
                 {
                     "id": f"scene_{i}",
                     "title": sub[:40],
-                    "narration": f"Now focus on {sub}. Build the idea with one concrete example and one visual step forward.",
+                    "narration": f"Now focus on {sub}. Build the idea with one concrete example, then extend it one step further.",
                     "visual_description": f"Show a focused visual explanation for {sub} with explicit progression from previous scene.",
                     "estimated_duration": per_seg,
                 }
