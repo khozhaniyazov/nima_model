@@ -5,6 +5,7 @@ Request analysis — classifies a user prompt and creates an animation storyboar
 from openai import OpenAI
 import os
 import re
+import json
 
 from dotenv import load_dotenv
 
@@ -122,6 +123,44 @@ def _llm_text(prompt_messages, model: str) -> str:
     return message.content or ""
 
 
+def _llm_routing_json(prompt: str) -> dict:
+    """Small structured routing call to avoid brittle keyword guessing."""
+    system_msg = """You classify educational animation requests. Return ONLY valid JSON.
+
+Schema:
+{
+  "type": "EDUCATIONAL_CONCEPT|DETAILED_ANIMATION|SIMPLE_ANIMATION",
+  "complexity": "BASIC|INTERMEDIATE|ADVANCED",
+  "topic": "2-6 words",
+  "subtopics": ["3-8 short strings"],
+  "duration": 120-1200,
+  "depth": "SURFACE|MODERATE|DEEP",
+  "domain": "math|physics|computer_science|chemistry|general",
+  "approach": "1 sentence"
+}
+
+Prefer broad course-style durations when the prompt asks to teach multiple connected ideas.
+Return only JSON, no markdown fences."""
+
+    text = _llm_text(
+        [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": prompt},
+        ],
+        model=FAST_MODEL,
+    )
+    if not text:
+        raise ValueError("Empty routing response")
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("Routing response is not a JSON object")
+    return data
+
+
 def analyze_request_type(prompt: str) -> dict:
     """Classify the prompt and extract metadata needed to drive generation."""
     print("[ANALYZE] Analyzing request type...")
@@ -156,39 +195,56 @@ APPROACH: [1 sentence: main teaching approach]
     defaults = _heuristic_analysis_defaults(prompt)
 
     try:
-        result = _llm_text(
-            [
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": f"Classify this request: {prompt}"},
-            ],
-            model=FAST_MODEL,  # Analysis is just classification, use fast model
-        )
-
-        if not result:
-            raise ValueError("Empty analysis response")
-
         analysis = dict(defaults)
-        for line in result.split("\n"):
-            line = line.strip()
-            if line.startswith("TYPE:"):
-                analysis["type"] = line[5:].strip()
-            elif line.startswith("COMPLEXITY:"):
-                analysis["complexity"] = line[11:].strip()
-            elif line.startswith("TOPIC:"):
-                analysis["topic"] = line[6:].strip()
-            elif line.startswith("SUBTOPICS:"):
-                raw = line[10:].strip()
-                analysis["subtopics"] = [s.strip() for s in raw.split(",") if s.strip()]
-            elif line.startswith("DURATION:"):
-                m = re.search(r"\d+", line)
-                if m:
-                    analysis["duration"] = int(m.group())
-            elif line.startswith("DEPTH:"):
-                analysis["depth"] = line[6:].strip()
-            elif line.startswith("DOMAIN:"):
-                analysis["domain"] = line[7:].strip()
-            elif line.startswith("APPROACH:"):
-                analysis["approach"] = line[9:].strip()
+        try:
+            routed = _llm_routing_json(prompt)
+            analysis.update(
+                {
+                    "type": routed.get("type") or analysis["type"],
+                    "complexity": routed.get("complexity") or analysis["complexity"],
+                    "topic": routed.get("topic") or analysis["topic"],
+                    "subtopics": routed.get("subtopics") or analysis["subtopics"],
+                    "duration": int(routed.get("duration") or analysis["duration"]),
+                    "depth": routed.get("depth") or analysis["depth"],
+                    "domain": routed.get("domain") or analysis["domain"],
+                    "approach": routed.get("approach") or analysis["approach"],
+                }
+            )
+        except Exception:
+            result = _llm_text(
+                [
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": f"Classify this request: {prompt}"},
+                ],
+                model=FAST_MODEL,
+            )
+
+            if not result:
+                raise ValueError("Empty analysis response")
+
+            for line in result.split("\n"):
+                line = line.strip()
+                if line.startswith("TYPE:"):
+                    analysis["type"] = line[5:].strip()
+                elif line.startswith("COMPLEXITY:"):
+                    analysis["complexity"] = line[11:].strip()
+                elif line.startswith("TOPIC:"):
+                    analysis["topic"] = line[6:].strip()
+                elif line.startswith("SUBTOPICS:"):
+                    raw = line[10:].strip()
+                    analysis["subtopics"] = [
+                        s.strip() for s in raw.split(",") if s.strip()
+                    ]
+                elif line.startswith("DURATION:"):
+                    m = re.search(r"\d+", line)
+                    if m:
+                        analysis["duration"] = int(m.group())
+                elif line.startswith("DEPTH:"):
+                    analysis["depth"] = line[6:].strip()
+                elif line.startswith("DOMAIN:"):
+                    analysis["domain"] = line[7:].strip()
+                elif line.startswith("APPROACH:"):
+                    analysis["approach"] = line[9:].strip()
 
         print(
             f"[ANALYZE] [OK] type={analysis['type']} domain={analysis['domain']} duration={analysis['duration']}s"
