@@ -37,10 +37,15 @@ def _llm_text(prompt_messages, model: str) -> str:
                 }
             ],
         )
-        return resp.output_text
+        return resp.output_text or ""
 
     response = client.chat.completions.create(model=model, messages=prompt_messages)
-    return response.choices[0].message.content
+    if not response or not getattr(response, "choices", None):
+        return ""
+    message = response.choices[0].message
+    if not message:
+        return ""
+    return message.content or ""
 
 
 def analyze_request_type(prompt: str) -> dict:
@@ -93,6 +98,9 @@ APPROACH: [1 sentence: main teaching approach]
             ],
             model=FAST_MODEL,  # Analysis is just classification, use fast model
         )
+
+        if not result:
+            raise ValueError("Empty analysis response")
 
         analysis = dict(defaults)
         for line in result.split("\n"):
@@ -335,7 +343,12 @@ Return ONLY the JSON. No markdown fences, no explanation."""
                 },
             ],
             model=GENERATION_MODEL,
-        ).strip()
+        )
+
+        if not plan_text:
+            raise ValueError("Empty narrated plan response")
+
+        plan_text = plan_text.strip()
 
         # Strip markdown fences if present
         if plan_text.startswith("```"):
@@ -362,17 +375,42 @@ Return ONLY the JSON. No markdown fences, no explanation."""
         # Fallback: a minimal single-segment plan
         import json
 
-        fallback = {
-            "segments": [
+        topic = analysis.get("topic", "this concept")
+        subtopics = analysis.get("subtopics") or [topic]
+        duration = int(analysis.get("duration", 60) or 60)
+        seg_count = min(10, max(4, len(subtopics) + 2))
+        per_seg = max(8, duration // seg_count)
+
+        segments = [
+            {
+                "id": "scene_1",
+                "title": "Hook / Opening",
+                "narration": f"Let me explain {topic} step by step.",
+                "visual_description": f"Introduce {topic} with a clear visual hook and title.",
+                "estimated_duration": per_seg,
+            }
+        ]
+        for i, sub in enumerate(subtopics[: max(1, seg_count - 2)], start=2):
+            segments.append(
                 {
-                    "id": "scene_1",
-                    "title": "Full Animation",
-                    "narration": f"Let me explain {analysis.get('topic', 'this concept')} step by step.",
-                    "visual_description": "Show the concept with clear visual progression.",
-                    "estimated_duration": analysis.get("duration", 60),
+                    "id": f"scene_{i}",
+                    "title": sub[:40],
+                    "narration": f"Now focus on {sub}. Build the idea with one concrete example and one visual step forward.",
+                    "visual_description": f"Show a focused visual explanation for {sub} with explicit progression from previous scene.",
+                    "estimated_duration": per_seg,
                 }
-            ]
-        }
+            )
+        segments.append(
+            {
+                "id": f"scene_{len(segments) + 1}",
+                "title": "Takeaway",
+                "narration": f"So the big takeaway is {topic}. Summarize the key idea without repeating the full lesson.",
+                "visual_description": f"Conclude {topic} with a concise summary visual and final emphasis.",
+                "estimated_duration": per_seg,
+            }
+        )
+
+        fallback = {"segments": segments}
         return json.dumps(fallback)
 
 
