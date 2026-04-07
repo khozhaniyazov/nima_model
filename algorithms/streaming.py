@@ -1414,13 +1414,17 @@ def stitch_scenes(scene_videos: List[str], output: str) -> str:
                 "0",
                 "-i",
                 concat_file,
-                "-c",
-                "copy",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-c:a",
+                "aac",
                 output,
             ],
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
 
         if result.returncode != 0:

@@ -1177,7 +1177,35 @@ class GeneratedScene(Scene):
         self.play(FadeOut(title), FadeOut(subtitle), run_time=0.8)
 '''
             path, ok, _ = _render_single_scene(code, filename, job_id, suffix)
-            return path if ok and path else None
+            if not (ok and path):
+                return None
+
+            # Add silent audio so stitched output keeps a consistent audio stream.
+            silent_path = str(Path(path).with_name(f"{Path(path).stem}_silent.mp4"))
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    path,
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=channel_layout=stereo:sample_rate=44100",
+                    "-shortest",
+                    "-c:v",
+                    "copy",
+                    "-c:a",
+                    "aac",
+                    silent_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode == 0 and Path(silent_path).exists():
+                return silent_path
+            return path
 
         intro_path = _render_text_card(
             (intro_outro.get("introText") or "").strip(), "intro"

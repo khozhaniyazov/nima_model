@@ -16,6 +16,80 @@ from algorithms.template_registry import TEMPLATES
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 
+def _heuristic_analysis_defaults(prompt: str) -> dict:
+    text = (prompt or "").lower()
+    domain = "math"
+    if any(
+        k in text
+        for k in [
+            "algorithm",
+            "graph",
+            "tree",
+            "queue",
+            "stack",
+            "dynamic programming",
+            "binary",
+            "recursion",
+            "complexity",
+        ]
+    ):
+        domain = "computer_science"
+    elif any(
+        k in text
+        for k in [
+            "orbital",
+            "molecule",
+            "atom",
+            "chemical",
+            "reaction",
+            "equilibrium",
+            "ph ",
+        ]
+    ):
+        domain = "chemistry"
+    elif any(
+        k in text
+        for k in [
+            "wavefunction",
+            "entropy",
+            "thermodynamics",
+            "energy",
+            "momentum",
+            "electric",
+            "field",
+            "quantum",
+        ]
+    ):
+        domain = "physics"
+    elif any(
+        k in text
+        for k in [
+            "economics",
+            "supply",
+            "demand",
+            "game theory",
+            "prisoner",
+            "nash",
+            "payoff",
+        ]
+    ):
+        domain = "general"
+
+    tokens = [w.strip(".,()[]{}") for w in text.split() if len(w.strip(".,()[]{}")) > 3]
+    topic = " ".join(tokens[:6]) if tokens else (prompt or "concept")[:60]
+    subtopics = tokens[:8]
+    return {
+        "type": "EDUCATIONAL_CONCEPT",
+        "complexity": "INTERMEDIATE",
+        "topic": topic,
+        "subtopics": subtopics,
+        "duration": 300,
+        "depth": "MODERATE",
+        "domain": domain,
+        "approach": "visual explanation with concrete examples",
+    }
+
+
 def _is_codex_model(model: str) -> bool:
     return "codex" in (model or "").lower()
 
@@ -79,16 +153,7 @@ DOMAIN: [domain]
 APPROACH: [1 sentence: main teaching approach]
 """
 
-    defaults = {
-        "type": "EDUCATIONAL_CONCEPT",
-        "complexity": "INTERMEDIATE",
-        "topic": prompt[:60],
-        "subtopics": [],
-        "duration": 300,
-        "depth": "MODERATE",
-        "domain": "math",
-        "approach": "visual explanation with concrete examples",
-    }
+    defaults = _heuristic_analysis_defaults(prompt)
 
     try:
         result = _llm_text(
