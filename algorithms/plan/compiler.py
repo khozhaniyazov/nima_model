@@ -49,13 +49,37 @@ def _style_lines(style: Dict[str, Any], var: str) -> List[str]:
 def _is_math_text(s: str) -> bool:
     if not s:
         return False
-    math_tokens = ["^", "_", "\\", "ℝ", "→", "∈", "≅", "≤", "≥", "≠", "±", "×", "·", "√", "π"]
+    math_tokens = [
+        "^",
+        "_",
+        "\\",
+        "ℝ",
+        "→",
+        "∈",
+        "≅",
+        "≤",
+        "≥",
+        "≠",
+        "±",
+        "×",
+        "·",
+        "√",
+        "π",
+    ]
     return any(t in s for t in math_tokens)
 
 
 def _ctor(obj: Dict[str, Any]) -> str:
     kind = obj["kind"]
     params = obj.get("params") or {}
+
+    def _vec3(v: Any, default: str) -> str:
+        if isinstance(v, (list, tuple)) and len(v) >= 2:
+            x = float(v[0])
+            y = float(v[1])
+            z = float(v[2]) if len(v) >= 3 else 0.0
+            return f"np.array([{x}, {y}, {z}])"
+        return default
 
     # Auto-upgrade Text to MathTex if it looks like math
     if kind == "Text":
@@ -81,7 +105,9 @@ def _ctor(obj: Dict[str, Any]) -> str:
         return f"MathTex({_py(tex)})"
 
     if kind == "VGroup":
-        children = obj.get("children") or []
+        children = (
+            obj.get("children") or params.get("children") or params.get("members") or []
+        )
         args = ", ".join([f"objs[{_py(cid)}]" for cid in children])
         return f"VGroup({args})"
 
@@ -90,8 +116,8 @@ def _ctor(obj: Dict[str, Any]) -> str:
         return (
             "NumberPlane(\n"
             "    x_range=[-5,5], y_range=[-4,4],\n"
-            "    background_line_style={\"stroke_opacity\": 0.15},\n"
-            "    faded_line_style={\"stroke_opacity\": 0.08},\n"
+            '    background_line_style={"stroke_opacity": 0.15},\n'
+            '    faded_line_style={"stroke_opacity": 0.08},\n'
             "    faded_line_ratio=3,\n"
             ")"
         )
@@ -100,18 +126,30 @@ def _ctor(obj: Dict[str, Any]) -> str:
         return "Axes(x_range=[-5,5,1], y_range=[-4,4,1])"
 
     if kind == "Dot":
-        return "Dot()"
+        point = _vec3(params.get("point"), "ORIGIN")
+        radius = params.get("radius")
+        if radius is not None:
+            return f"Dot(point={point}, radius={float(radius)})"
+        return f"Dot(point={point})"
 
     if kind == "Line":
-        return "Line(LEFT, RIGHT)"
+        start = _vec3(params.get("start"), "LEFT")
+        end = _vec3(params.get("end"), "RIGHT")
+        return f"Line({start}, {end})"
 
     if kind == "Arrow":
-        return "Arrow(LEFT, RIGHT)"
+        start = _vec3(params.get("start"), "LEFT")
+        end = _vec3(params.get("end"), "RIGHT")
+        buff = float(params.get("buff", 0))
+        return f"Arrow({start}, {end}, buff={buff})"
 
     if kind == "Rectangle":
         return "Rectangle()"
 
     if kind == "Circle":
+        radius = params.get("radius")
+        if radius is not None:
+            return f"Circle(radius={float(radius)})"
         return "Circle()"
 
     if kind == "Square":
@@ -194,7 +232,9 @@ def compile_plan(plan: Dict[str, Any]) -> str:
             elif op == "transform":
                 tgt = act["target"]
                 src = act.get("source") or tgt
-                a(f"        self.play(Transform(objs[{_py(tgt)}], objs[{_py(src)}]){rt_s})")
+                a(
+                    f"        self.play(Transform(objs[{_py(tgt)}], objs[{_py(src)}]){rt_s})"
+                )
 
             elif op == "move_to":
                 tgt = act["target"]
@@ -203,12 +243,18 @@ def compile_plan(plan: Dict[str, Any]) -> str:
                 if mode == "edge":
                     edge = place.get("edge", "UP")
                     buff = float(place.get("buff", 0.3))
-                    a(f"        self.play(objs[{_py(tgt)}].animate.to_edge({edge}, buff={buff}){rt_s})")
+                    a(
+                        f"        self.play(objs[{_py(tgt)}].animate.to_edge({edge}, buff={buff}){rt_s})"
+                    )
                 elif mode == "point":
                     pt = place.get("point") or [0, 0]
-                    a(f"        self.play(objs[{_py(tgt)}].animate.move_to(({float(pt[0])}, {float(pt[1])}, 0)){rt_s})")
+                    a(
+                        f"        self.play(objs[{_py(tgt)}].animate.move_to(({float(pt[0])}, {float(pt[1])}, 0)){rt_s})"
+                    )
                 else:
-                    a(f"        self.play(objs[{_py(tgt)}].animate.move_to(ORIGIN){rt_s})")
+                    a(
+                        f"        self.play(objs[{_py(tgt)}].animate.move_to(ORIGIN){rt_s})"
+                    )
 
             elif op == "arrange":
                 tgt = act["target"]
