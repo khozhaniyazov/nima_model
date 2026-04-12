@@ -247,28 +247,102 @@ def detect_missing_section_cleanup(code: str) -> List[str]:
         if re.match(r"\s*#\s*={3,}\s*(SCENE|SECTION|PART|STEP)\s", line, re.IGNORECASE):
             section_starts.append(i)
 
-    start_section_stacks = []
-    section_add_objects = {}
+    start_section_stack = []
+    active_sections: Dict[str, Dict[str, object]] = {}
+    section_history: List[Dict[str, object]] = []
+
+    def _extract_args(arg_text: str) -> List[str]:
+        return [a.strip() for a in arg_text.split(",") if a.strip()]
 
     for i, line in enumerate(lines):
         start_m = re.search(r"(\w+)\s*=\s*start_section\(self", line)
         if start_m:
+            if start_section_stack:
+                prev_var, prev_line = start_section_stack[-1]
+                warnings.append(
+                    f"[SECTION_NESTED] start_section at line {i + 1} starts before "
+                    f"ending section '{prev_var}' from line {prev_line + 1}."
+                )
             section_var = start_m.group(1)
-            start_section_stacks.append((section_var, i))
-            section_add_objects[section_var] = []
-        end_m = re.search(r"(\w+)\.end\(", line)
-        if end_m and start_section_stacks:
-            section_var, start_line = start_section_stacks.pop()
-        add_m = re.search(r"(\w+)\.add\(([^)]+)\)", line)
-        if add_m and start_section_stacks:
-            section_var, _ = start_section_stacks[-1]
-            section_add_objects.setdefault(section_var, []).append(add_m.group(2))
+            start_section_stack.append((section_var, i))
+            active_sections[section_var] = {
+                "start": i,
+                "end": None,
+                "added": set(),
+                "returned": False,
+                "ended": False,
+            }
+            continue
 
-    if start_section_stacks:
-        warnings.append(
-            f"[SECTION_LEAK] start_section at line {start_section_stacks[-1][1] + 1} "
-            f"has no end_section. Objects may persist across section boundaries."
-        )
+        end_helper_m = re.search(r"end_section\(\s*self\s*,\s*(\w+)", line)
+        end_method_m = re.search(r"(\w+)\.end\(", line)
+
+        ending_section = None
+        if end_helper_m:
+            ending_section = end_helper_m.group(1)
+        elif end_method_m:
+            ending_section = end_method_m.group(1)
+
+        if ending_section:
+            sec_info = active_sections.get(ending_section)
+            if sec_info is None:
+                warnings.append(
+                    f"[SECTION_END_UNKNOWN] line {i + 1} ends unknown section '{ending_section}'."
+                )
+            else:
+                sec_info["end"] = i
+                sec_info["ended"] = True
+                section_history.append({"name": ending_section, **sec_info})
+                if start_section_stack and start_section_stack[-1][0] == ending_section:
+                    start_section_stack.pop()
+                elif start_section_stack:
+                    warnings.append(
+                        f"[SECTION_END_ORDER] line {i + 1} ends '{ending_section}' out of order."
+                    )
+                    start_section_stack = [
+                        s for s in start_section_stack if s[0] != ending_section
+                    ]
+                active_sections.pop(ending_section, None)
+            continue
+
+        add_m = re.search(r"(\w+)\.add\(([^)]+)\)", line)
+        if add_m:
+            section_var = add_m.group(1)
+            if section_var in active_sections:
+                args = _extract_args(add_m.group(2))
+                active_sections[section_var]["added"].update(args)
+                if not args:
+                    warnings.append(
+                        f"[SECTION_ADD_EMPTY] line {i + 1} calls {section_var}.add() with no objects."
+                    )
+
+        return_m = re.search(r"return\s+(.+)", line)
+        if return_m:
+            returned = return_m.group(1)
+            for sec_name, sec_info in active_sections.items():
+                if re.search(rf"\b{re.escape(sec_name)}\b", returned):
+                    sec_info["returned"] = True
+
+    if start_section_stack:
+        for sec_var, start_line in start_section_stack:
+            warnings.append(
+                f"[SECTION_LEAK] start_section at line {start_line + 1} "
+                f"for '{sec_var}' has no end_section. Objects may persist across section boundaries."
+            )
+
+    for sec_name, sec_info in active_sections.items():
+        if not sec_info.get("returned"):
+            warnings.append(
+                f"[SECTION_RETURN] Section '{sec_name}' started at line {sec_info['start'] + 1} "
+                "is never returned from construct()."
+            )
+
+    for hist in section_history:
+        if not hist.get("added"):
+            warnings.append(
+                f"[SECTION_EMPTY] Section '{hist['name']}' closed at line {hist['end'] + 1} "
+                "without tracking objects via section.add()."
+            )
 
     for idx in range(1, len(section_starts)):
         prev_end = section_starts[idx]
@@ -299,6 +373,7 @@ def detect_section_leak(code: str) -> List[str]:
     section_start = 0
     section_var = None
     section_vars = set()
+    section_added: Dict[str, set] = {}
 
     for i, line in enumerate(lines):
         start_m = re.search(r"(\w+)\s*=\s*start_section\(self", line)
@@ -307,14 +382,34 @@ def detect_section_leak(code: str) -> List[str]:
             section_start = i
             section_var = start_m.group(1)
             section_vars.add(section_var)
+            section_added.setdefault(section_var, set())
+            continue
+
+        add_m = re.search(r"(\w+)\.add\(([^)]+)\)", line)
+        if add_m:
+            sec_var = add_m.group(1)
+            if sec_var in section_added:
+                args = [a.strip() for a in add_m.group(2).split(",") if a.strip()]
+                section_added[sec_var].update(args)
+
         end_m = re.search(r"(\w+)\.end\(", line)
         if end_m and in_section:
-            section_ranges.append((section_start, i, section_var))
+            ended_var = end_m.group(1)
+            section_ranges.append(
+                (section_start, i, section_var, section_added.get(ended_var, set()))
+            )
             in_section = False
             section_var = None
 
     if in_section and section_start > 0:
-        section_ranges.append((section_start, len(lines) - 1, section_var))
+        section_ranges.append(
+            (
+                section_start,
+                len(lines) - 1,
+                section_var,
+                section_added.get(section_var, set()),
+            )
+        )
 
     created_objects = {}
     for i, line in enumerate(lines):
@@ -325,7 +420,7 @@ def detect_section_leak(code: str) -> List[str]:
             if var_name not in created_objects:
                 created_objects[var_name] = (i, obj_type)
 
-    for start, end, sec_var in section_ranges:
+    for start, end, sec_var, added_objs in section_ranges:
         section_content = "\n".join(lines[start:end])
         section_creates = re.findall(
             r"(\w+)\s*=\s*(?:VGroup|NumberPlane|ComplexPlane|Axes|MathTex|Text|Circle|Square|Dot|Line|Arrow)\(",
@@ -336,9 +431,6 @@ def detect_section_leak(code: str) -> List[str]:
         after_section_start = end + 1
         if after_section_start >= len(lines):
             continue
-        after_section = "\n".join(
-            lines[after_section_start : min(after_section_start + 30, len(lines))]
-        )
         next_section_m = re.search(
             r"start_section\(", "\n".join(lines[after_section_start:])
         )
@@ -351,6 +443,8 @@ def detect_section_leak(code: str) -> List[str]:
         for obj in section_creates:
             if obj not in section_vars and obj in created_objects:
                 obj_line, _ = created_objects[obj]
+                if obj in added_objs:
+                    continue
                 if (
                     f"FadeOut({obj})" not in after_section_window
                     and f"self.remove({obj})" not in after_section_window
