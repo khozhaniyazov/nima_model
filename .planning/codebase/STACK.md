@@ -1,111 +1,81 @@
 # Technology Stack
 
-**Analysis Date:** 2026-04-04
+**Analysis Date:** 2026-04-12
 
 ## Languages
 
 **Primary:**
-- Python 3.11+ - Backend server, AI pipeline, algorithms, code generation
-- TypeScript 5 - Frontend type safety
-- JavaScript (ESNext) - Frontend React components
+- Python (3.11 in CI) - backend API, generation pipeline, rendering orchestration in `app.py`, `algorithms/*.py`, and CI workflow `.github/workflows/test.yml`
 
 **Secondary:**
-- SQL - Database schema and queries (PostgreSQL)
+- TypeScript - Next.js frontend in `nima-frontend/src/**/*.ts` and `nima-frontend/src/**/*.tsx`
+- SQL (PostgreSQL dialect) - schema and persistence model in `database_schema.sql`
 
 ## Runtime
 
-**Backend:**
-- Python 3.11 - Flask application server, runs on localhost:5000
-
-**Frontend:**
-- Node.js 20+ - Next.js development server
-- Next.js 16.1.6 runtime (Edge/Serverless compatible)
+**Environment:**
+- Python runtime (CI uses `python-version: '3.11'`) in `.github/workflows/test.yml`
+- Node.js runtime for frontend (dependency engine ranges indicate Node 18.18+ family) in `nima-frontend/package-lock.json`
 
 **Package Manager:**
-- pip (Python) - requirements.txt
-- npm (Node.js) - package.json in nima-frontend/
+- pip - Python dependencies from `requirements.txt`
+- npm - frontend dependencies from `nima-frontend/package.json`
+- Lockfile: present (`nima-frontend/package-lock.json`)
 
 ## Frameworks
 
-**Backend:**
-- Flask 3.0+ - HTTP server and API endpoints (`app.py`)
-- Flask-CORS - Cross-origin resource sharing for frontend API
+**Core:**
+- Flask (`flask>=3.0`) - HTTP server and API routes in `app.py`
+- Next.js (`next@16.1.6`) - frontend web app in `nima-frontend/package.json`
+- React (`react@19.2.3`, `react-dom@19.2.3`) - UI layer in `nima-frontend/package.json`
 
-**Frontend:**
-- Next.js 16.1.6 - React 19 framework with App Router
-- React 19.2.3 - UI components
-- Tailwind CSS 4.2.1 - Utility-first styling (via @tailwindcss/postcss)
+**Testing:**
+- Python script-based tests executed directly (`python test_imports.py`, `python test_optimizations.py`) in `.github/workflows/test.yml`
 
-**Build/Dev Tools:**
-- ESLint 9 - Frontend linting (eslint-config-next)
-- TypeScript 5 - Type checking
-- PostCSS 8.5.8 - CSS processing for Tailwind
+**Build/Dev:**
+- ESLint (`eslint@^9`, `eslint-config-next@16.1.6`) in `nima-frontend/package.json` and `nima-frontend/eslint.config.mjs`
+- Tailwind CSS v4 + PostCSS (`tailwindcss@^4.2.1`, `@tailwindcss/postcss`) in `nima-frontend/package.json` and `nima-frontend/postcss.config.mjs`
+- TypeScript (`typescript@^5`) in `nima-frontend/package.json` and `nima-frontend/tsconfig.json`
+- Ruff, Black, mypy installed in CI lint job in `.github/workflows/test.yml`
 
 ## Key Dependencies
 
-**AI & Code Generation:**
-- openai>=1.30 - OpenAI API client (GPT-4o, GPT-4o-mini, GPT-5.2-codex models)
-- anthropic>=0.39.0 - Anthropic API client (for evaluation in skills/mcp-builder)
-- numpy>=1.26 - Numerical computing for code analysis
+**Critical:**
+- `openai>=1.30` - LLM generation and streaming clients in `app.py`, `algorithms/ai_functions.py`, `algorithms/streaming.py`, `algorithms/request_analysis.py`
+- `manim>=0.18` - animation generation/rendering target used throughout generation code (for example `algorithms/ai_functions.py`)
+- `psycopg2-binary>=2.9` - PostgreSQL connectivity in `app.py`
 
-**Animation Generation:**
-- manim>=0.18 - Mathematical animation engine (3b1b-style videos)
-
-**Database:**
-- psycopg2-binary>=2.9 - PostgreSQL database adapter
-
-**Configuration:**
-- python-dotenv>=1.0 - Environment variable loading from .env
-
-**Media Processing:**
-- ffmpeg (external) - Audio/video concatenation and merging via subprocess
-
-**Frontend Styling:**
-- @tailwindcss/postcss - Tailwind CSS v4 PostCSS plugin
-- autoprefixer - CSS vendor prefixing
+**Infrastructure:**
+- `python-dotenv>=1.0` - environment loading in `config.py`, `app.py`, `algorithms/*.py`
+- `numpy>=1.26` - numeric operations used in animation/analysis modules (for example `RAG/RAG_system.py`)
+- `flask-cors` import used for CORS middleware in `app.py` (imported, not listed in root `requirements.txt`)
+- `edge_tts` import used for narration generation in `algorithms/tts.py` (imported, not listed in root `requirements.txt`)
+- `requests` import used for webhook delivery in `app.py` (imported lazily inside `deliver_webhook_background`, not listed in root `requirements.txt`)
+- `jwt` import used for LTI launch parsing in `app.py` (imported lazily inside `lti_launch`, not listed in root `requirements.txt`)
 
 ## Configuration
 
-**Environment Variables (.env):**
-- `OPENAI_API_KEY` - OpenAI API key for GPT models
-- `OPENAI_BASE_URL` - Optional custom OpenAI endpoint
-- `GENERATION_MODEL` - Main code generation model (default: gpt-5.2-codex)
-- `FAST_MODEL` - Light tasks model (default: gpt-5.2-codex)
-- `DB_CONNECTION_STRING` - PostgreSQL connection string
-- `USE_DATABASE` - Enable/disable database (default: true)
-- `FAST_PIPELINE` - Fast mode flag (default: false)
-- `DRAFT_PIPELINE` - Ultra-fast preview mode (default: false)
-- `ENABLE_VOICEOVER` - TTS voiceover generation (default: true)
-- `TTS_MODEL` - OpenAI TTS model (default: gpt-4o-mini-tts)
-- `TTS_VOICE` - Voice preset (default: alloy)
+**Environment:**
+- Centralized env configuration is loaded from `config.py` via `load_dotenv(override=True)`
+- `.env` file is present at repository root (`.env`) and used as environment source (contents not analyzed)
+- Key backend settings include OpenAI provider settings, database toggle/connection envs, pipeline mode flags, caching flags, CDN base URL, and multi-provider streaming settings in `config.py`
 
-**Build Configuration:**
-- `nima-frontend/next.config.ts` - Next.js configuration (minimal, no special options)
-- `nima-frontend/tsconfig.json` - TypeScript configuration (inherited from eslint-config-next)
-- `nima-frontend/postcss.config.mjs` - PostCSS with Tailwind CSS 4 plugin
-
-**Path Configuration (config.py):**
-- `MANIM_SCRIPTS` - `C:/temp/manim_scripts` - Temporary script storage
-- `OUTPUTS` - `C:/temp/outputs` - Rendered video output directory
-- `RENDER_TIMEOUT_SECONDS` - 900 (15 minutes)
-- `MAX_GENERATION_ATTEMPTS` - 2
-- `MAX_RENDER_RETRIES` - 3
+**Build:**
+- Frontend compile/lint config: `nima-frontend/tsconfig.json`, `nima-frontend/eslint.config.mjs`, `nima-frontend/postcss.config.mjs`, `nima-frontend/next.config.ts`
+- CI configuration: `.github/workflows/test.yml`
 
 ## Platform Requirements
 
 **Development:**
-- Python 3.11+
-- Node.js 20+
-- PostgreSQL instance (localhost:5432/manim_db)
-- ffmpeg in PATH (for TTS and video merging)
-- OpenAI API access
+- Python environment with packages from `requirements.txt`
+- Node/npm environment for frontend in `nima-frontend/package.json`
+- Local PostgreSQL when `USE_DATABASE=true` (connection configured via `DB_CONNECTION_STRING` in `config.py`)
+- `ffmpeg`/`ffprobe` binaries required by media pipeline in `algorithms/tts.py`, `algorithms/streaming.py`, and `app.py`
 
 **Production:**
-- Flask server on port 5000
-- Next.js production build (or托管 platform)
-- PostgreSQL database
-- Persistent storage for outputs and scripts
+- Flask backend process serving API routes from `app.py`
+- Next.js frontend process built from `nima-frontend` (scripts `dev/build/start` in `nima-frontend/package.json`)
 
 ---
 
-*Stack analysis: 2026-04-04*
+*Stack analysis: 2026-04-12*

@@ -1,142 +1,96 @@
 # External Integrations
 
-**Analysis Date:** 2026-04-04
+**Analysis Date:** 2026-04-12
 
 ## APIs & External Services
 
-**AI Code Generation:**
-- OpenAI API - Primary LLM for code generation
-  - SDK: `openai` Python package
-  - Models: `gpt-5.2-codex` (generation), `gpt-4o-mini` (fallback), `gpt-4o` (evaluation)
-  - Auth: `OPENAI_API_KEY` environment variable
-  - Base URL: `OPENAI_BASE_URL` (supports custom endpoints like OpenRouter)
+**LLM Providers:**
+- OpenAI-compatible API - generation, review, and streaming fallback in `app.py`, `algorithms/ai_functions.py`, `algorithms/request_analysis.py`, `algorithms/streaming.py`
+  - SDK/Client: `openai` (`OpenAI` client)
+  - Auth: `OPENAI_API_KEY`
+- ZJUBAPI endpoint (OpenAI-compatible) - primary streaming provider option in `config.py` and `algorithms/streaming.py`
+  - SDK/Client: `openai` (`OpenAI` client against custom base URL)
+  - Auth: `ZJUBAPI_API_KEY`
+- Wenwen API endpoint (OpenAI-compatible wrapper usage) - alternate streaming provider in `config.py` and `algorithms/streaming.py`
+  - SDK/Client: `openai` (`OpenAI` client against custom base URL)
+  - Auth: `WENWEN_API_KEY`
 
-**Text-to-Speech:**
-- OpenAI TTS API - Voiceover narration generation
-  - SDK: `openai.audio.speech.create()`
-  - Model: `gpt-4o-mini-tts`
-  - Voice: `alloy` (configurable: ash/coral/echo/fable/nova/onyx/sage/shimmer)
-  - Auth: Same `OPENAI_API_KEY`
-
-**AI Evaluation (Skills/MCP):**
-- Anthropic API - Alternative AI for evaluation tasks
-  - SDK: `anthropic` Python package
-  - Used in: `skills/mcp-builder/scripts/evaluation.py`
-  - Auth: `ANTHROPIC_API_KEY` (inferred from usage)
-
-**RAG System:**
-- Local file-based RAG - Curated Manim pattern corpus
-  - Location: `RAG/RAG_system.py`
-  - No external API - uses local JSON corpus of ~30 proven Manim patterns
+**Speech/Media Tooling:**
+- Microsoft Edge TTS service via `edge_tts` Python package - narration generation in `algorithms/tts.py`
+  - SDK/Client: `edge_tts`
+  - Auth: Not required by current code path (voice configured by `EDGE_TTS_VOICE` in `algorithms/tts.py`)
+- FFmpeg/FFprobe binaries - media probing, concatenation, and muxing in `algorithms/tts.py`, `algorithms/streaming.py`, `app.py`
+  - SDK/Client: CLI subprocess calls
+  - Auth: Not applicable
 
 ## Data Storage
 
-**PostgreSQL Database:**
-- Type: PostgreSQL (local or hosted)
-- Connection: `postgresql://postgres:***@localhost:5432/manim_db`
-- Client: `psycopg2` Python package
-- Schema: `database_schema.sql`
-
-**Tables:**
-- `requests` - User animation requests with analysis metadata
-- `generation_attempts` - Code generation attempts per request
-- `render_jobs` - Manim render job status and outputs
-- `ai_evaluations` - Quality evaluation scores per render
-- `error_patterns` - Known error signatures for retry optimization
-- `training_examples` - High-quality examples for training
+**Databases:**
+- PostgreSQL
+  - Connection: `DB_CONNECTION_STRING`
+  - Client: `psycopg2` (`psycopg2.connect`, `RealDictCursor`) in `app.py`
+  - Schema: `database_schema.sql`
 
 **File Storage:**
-- Local filesystem - `C:/temp/outputs/` for rendered videos
-- Local filesystem - `C:/temp/manim_scripts/` for generated Python scripts
-- Local filesystem - `C:/temp/outputs/audio/{job_id}/` for TTS audio segments
+- Local filesystem for scripts, outputs, and cache directories in `config.py` and `cache.py`
+- Optional CDN URL indirection via `CDN_BASE_URL`/`CDN_ENABLED` in `config.py` and `/api/videos/cdn-url` routes in `app.py`
 
 **Caching:**
-- Manim cache disabled (`--disable_caching` flag) for fresh renders
+- Local filesystem cache (render cache and prompt cache) in `cache.py`
+  - Backed by `OUTPUTS/.cache/*`
+  - Toggles: `RENDER_CACHE_ENABLED`, `PROMPT_CACHE_ENABLED` in `config.py`
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None implemented - System is open to all users
-- No user authentication or authorization layer
+- Custom API-key auth for selected API endpoints in `app.py`
+  - Implementation: hashed key storage in PostgreSQL (`api_keys`, `api_usage` tables in `database_schema.sql`), request validation in `require_api_key` decorator in `app.py`
 
-**API Security:**
-- CORS enabled on Flask backend (`flask_cors`)
-- Frontend communicates with backend via `http://localhost:5000`
-- No API key or token authentication on Flask endpoints
+- LTI 1.3 style LMS integration in `app.py`
+  - Implementation: login/launch/config/JWKS routes (`/api/lti/*`) with platform records in `lti_platforms` table in `database_schema.sql`
+  - Token handling: `jwt.decode(..., options={"verify_signature": False})` in `app.py`
 
 ## Monitoring & Observability
 
-**Logging:**
-- Python `print()` statements to stdout/stderr
-- Log files: `manim_generator.log`, `flask.log` (rotated/archived)
-- No structured logging framework (logging module available but not used)
-
 **Error Tracking:**
-- Custom error pattern recording in `error_patterns` table
-- Render error self-healing with LLM feedback loop
-- Database tracks: `error_category`, `error_signature`, `root_cause`, `fix_description`
+- None detected (no Sentry/Rollbar/Bugsnag integration found)
 
-**Metrics:**
-- `/stats` endpoint returns aggregate metrics:
-  - `total_requests` - All requests count
-  - `successful_renders` - Done renders count
-  - `avg_quality_score` - Average AI evaluation score
-  - `unique_error_patterns` - Distinct error types
-  - `top_domains` - Most common animation domains
-
-**Health Check:**
-- `/health` endpoint - Returns database availability and active job count
+**Logs:**
+- Application and pipeline logging via print-based logs in `app.py`, `algorithms/tts.py`, `algorithms/streaming.py`
+- Persisted operational metadata in PostgreSQL tables such as `render_jobs`, `ai_evaluations`, `error_patterns`, `webhook_deliveries` from `database_schema.sql`
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Self-hosted on localhost (development)
-- Flask app.run on `0.0.0.0:5000`
-- No containerization (Dockerfile not present)
+- Not explicitly defined in repository configuration files
 
 **CI Pipeline:**
-- GitHub Actions - `.github/workflows/test.yml`
-- Runs on: Ubuntu latest
-- Python version: 3.11
-
-**Pipeline Steps:**
-1. **Test job** - Runs `test_imports.py`, `test_optimizations.py`, `benchmark.py`
-2. **Lint job** - Runs `ruff check`, `black --check`
-3. **Pipeline modes job** - Tests DRAFT, FAST, FULL modes
-4. **Benchmark comparison** - Manual workflow dispatch for PR comparison
+- GitHub Actions workflow in `.github/workflows/test.yml`
+  - Python tests and benchmark scripts
+  - Lint pipeline using Ruff and Black
 
 ## Environment Configuration
 
 **Required env vars:**
-- `OPENAI_API_KEY` - OpenAI API authentication
-- `OPENAI_BASE_URL` - (optional) Custom API endpoint
-- `DB_CONNECTION_STRING` - PostgreSQL connection
-- `GENERATION_MODEL` - (optional) Override default gpt-5.2-codex
-- `FAST_MODEL` - (optional) Override default gpt-5.2-codex
-- `USE_DATABASE` - (optional) true/false, default true
-- `FAST_PIPELINE` - (optional) true/false, default false
-- `DRAFT_PIPELINE` - (optional) true/false, default false
-- `ENABLE_VOICEOVER` - (optional) true/false, default true
-- `TTS_MODEL` - (optional) Override TTS model
-- `TTS_VOICE` - (optional) Override voice preset
+- Backend AI/provider settings: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `GENERATION_MODEL`, `FAST_MODEL` in `config.py`
+- Streaming provider settings: `STREAM_PROVIDER`, `ZJUBAPI_BASE_URL`, `ZJUBAPI_API_KEY`, `ZJUBAPI_MODEL`, `WENWEN_BASE_URL`, `WENWEN_API_KEY`, `WENWEN_MODEL` in `config.py`
+- Database settings: `DB_CONNECTION_STRING`, `USE_DATABASE` in `config.py`
+- Pipeline flags: `DRAFT_PIPELINE`, `FAST_PIPELINE`, `ENABLE_VOICEOVER` in `config.py`
+- Storage/CDN/cache settings: `MANIM_SCRIPTS`, `OUTPUTS`, `CDN_BASE_URL`, `RENDER_CACHE_ENABLED`, `PROMPT_CACHE_ENABLED` in `config.py`
 
 **Secrets location:**
-- `.env` file at project root (contains `OPENAI_API_KEY`, `DB_CONNECTION_STRING`)
-- `.env` is in `.gitignore` - never committed
+- Root `.env` file present (`.env`) and loaded by `load_dotenv` in `config.py` and `app.py` (values not inspected)
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None - Flask API accepts direct POST requests
+- Backend API receives incoming requests at Flask routes in `app.py` including `/api/generate`, `/status/<job_id>`, `/api/videos/*`, `/api/templates*`, `/api/lti/*`
 
 **Outgoing:**
-- None - No outbound webhooks or callback integrations
-
-**Frontend-Backend Communication:**
-- REST polling - Frontend polls `/status/{job_id}` every 1.5 seconds
-- JSON API - `/api/generate` for job creation, `/api/prompts` for example prompts
-- Video delivery - `/outputs/{filename}` endpoint for rendered MP4 downloads
+- Configurable webhook delivery to third-party URLs via `requests.post` in `deliver_webhook_background` (`app.py`)
+  - Event registration/listing endpoints: `/api/webhooks` and `/api/webhooks/<webhook_id>` in `app.py`
+  - Delivery metadata persisted in `webhook_deliveries` table (`database_schema.sql`)
 
 ---
 
-*Integration audit: 2026-04-04*
+*Integration audit: 2026-04-12*

@@ -1,196 +1,197 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-04-04
+**Analysis Date:** 2026-04-12
 
 ## Directory Layout
 
 ```
-C:\ai-manim\
-├── app.py                      # Flask server + pipeline orchestration
-├── config.py                    # Centralized configuration
-├── requirements.txt             # Python dependencies
-├── database_schema.sql          # PostgreSQL schema
-├── nima-frontend/               # Next.js frontend application
-│   ├── package.json
-│   ├── next.config.ts
-│   ├── public/
-│   └── src/
-│       └── app/
-│           ├── page.tsx         # Main UI component
-│           ├── layout.tsx       # Root layout with metadata
-│           ├── globals.css      # Tailwind + custom CSS
-│           └── favicon.ico
-├── algorithms/                   # AI pipeline modules
-│   ├── __init__.py
-│   ├── request_analysis.py      # Prompt classification & planning
-│   ├── ai_functions.py           # LLM generation, review, fix, evaluate
-│   ├── code_digest.py            # Validation functions
-│   ├── template_registry.py      # Animation pattern templates
-│   ├── overlap_detector.py       # Layout overlap detection
-│   ├── error_parser.py           # Manim error parsing
-│   ├── tts.py                    # Text-to-speech voiceover
-│   ├── plan/
-│   │   ├── __init__.py
-│   │   ├── compiler.py           # JSON plan → Manim code
-│   │   ├── schema.py             # Plan validation schema
-│   │   └── examples.py           # Plan examples
-│   └── layout/
-│       └── engine.py             # Deterministic layout engine
+C:\ai-manim/
+├── app.py                         # Flask backend entry + orchestration + routes
+├── config.py                      # Central runtime and provider configuration
+├── cache.py                       # Render/prompt hash caches
+├── requirements.txt               # Python dependency manifest
+├── database_schema.sql            # PostgreSQL schema for backend persistence
+├── algorithms/                    # Core generation/validation/render support modules
+│   ├── ai_functions.py            # LLM generation/review/fix/evaluate helpers
+│   ├── request_analysis.py        # Prompt analysis + planning logic
+│   ├── code_digest.py             # Static validation and quality checks
+│   ├── streaming.py               # Scene streaming generation and stitching
+│   ├── tts.py                     # Voiceover generation and muxing
+│   ├── overlap_detector.py        # Overlap/layout checks
+│   ├── error_parser.py            # Render error parsing helpers
+│   ├── template_registry.py       # Structured generation templates
+│   └── plan/
+│       ├── schema.py              # Plan dataclasses + validators
+│       ├── compiler.py            # Plan JSON → deterministic Manim code
+│       └── examples.py            # Plan examples/support
+├── layout/
+│   └── engine.py                  # Deterministic zone layout primitives
 ├── RAG/
-│   └── RAG_system.py             # Retrieval-augmented generation
-├── training/
-│   ├── questions.py              # Example prompts for UI
-│   ├── 3b1b/                     # 3Blue1Brown video reference scenes
-│   └── scrape_manim_examples.py
-├── templates/                    # Animation templates
-├── prompts/                      # Prompt engineering files
-├── notes/                        # Documentation notes
-├── skills/                       # GSD skill definitions
-├── media/                        # Rendered outputs
-│   ├── images/
-│   └── videos/
-└── .planning/
-    └── codebase/                 # This analysis output
+│   ├── RAG_system.py              # Retrieval system for generation context
+│   └── fine_tuning.py             # Fine-tuning support script(s)
+├── templates/
+│   └── index.html                 # Flask-rendered fallback UI
+├── nima-frontend/                 # Next.js frontend app (separate project)
+│   ├── package.json               # Node scripts and dependencies
+│   ├── tsconfig.json              # TS compiler config + path alias
+│   ├── next.config.ts             # Next.js config
+│   └── src/
+│       ├── app/
+│       │   ├── layout.tsx         # Global frontend layout wrapper
+│       │   ├── page.tsx           # Prompt submission and status polling page
+│       │   ├── dashboard/page.tsx # Analytics dashboard page
+│       │   └── library/page.tsx   # Video library page
+│       ├── components/            # UI component modules
+│       └── lib/api.ts             # Frontend API client functions/types
+├── training/                      # Prompt dataset and reference assets/scripts
+├── media/                         # Generated media/output artifacts
+├── .planning/
+│   └── codebase/                  # Codebase analysis docs consumed by GSD
+└── skills/                        # Local skill packs and examples
 ```
 
 ## Directory Purposes
 
-**Root Level (Python Backend):**
-- `app.py` - Main Flask application entry point
-- `config.py` - All configuration centralized here
-- `requirements.txt` - Python package dependencies
-- `database_schema.sql` - PostgreSQL schema definitions
-
-**`nima-frontend/`:**
-- Purpose: Next.js web application for user interaction
-- Contains: React UI components, Tailwind styling, API client
-- Key files: `src/app/page.tsx` (main component), `src/app/layout.tsx` (root layout)
-
 **`algorithms/`:**
-- Purpose: AI-powered code generation and validation
-- Contains: Request analysis, code generation, validation, plan compilation, TTS
-- Key modules: `request_analysis.py`, `ai_functions.py`, `code_digest.py`, `plan/compiler.py`
+- Purpose: Keep backend business logic out of route handlers in `app.py`.
+- Contains: analysis, generation, validation, streaming, TTS, error handling, templates.
+- Key files: `algorithms/request_analysis.py`, `algorithms/ai_functions.py`, `algorithms/code_digest.py`, `algorithms/streaming.py`.
 
-**`RAG/`:**
-- Purpose: Retrieval-augmented generation for context-aware code
-- Contains: `RAG_system.py` with golden example retrieval
+**`algorithms/plan/`:**
+- Purpose: Define and compile deterministic plan format.
+- Contains: plan schema, compiler, examples.
+- Key files: `algorithms/plan/schema.py`, `algorithms/plan/compiler.py`.
 
 **`layout/`:**
-- Purpose: Deterministic layout engine for plan compilation
-- Contains: Zone-based placement, frame calculations
+- Purpose: Hold deterministic layout utilities separate from LLM-driven generation.
+- Contains: frame zone calculations and placement helpers.
+- Key files: `layout/engine.py`.
+
+**`RAG/`:**
+- Purpose: Store retrieval corpus and matching logic used by LLM prompts.
+- Contains: corpus + retrieval logic and fine-tuning helpers.
+- Key files: `RAG/RAG_system.py`.
+
+**`nima-frontend/src/app/`:**
+- Purpose: Route-level pages for Next.js app router.
+- Contains: main generator view, dashboard, library.
+- Key files: `nima-frontend/src/app/page.tsx`, `nima-frontend/src/app/dashboard/page.tsx`, `nima-frontend/src/app/library/page.tsx`.
+
+**`nima-frontend/src/components/`:**
+- Purpose: Reusable UI components for pages in `src/app/`.
+- Contains: theme provider, video player/card, dashboard widgets.
+- Key files: `nima-frontend/src/components/ThemeProvider.tsx`, `nima-frontend/src/components/VideoPlayer.tsx`, `nima-frontend/src/components/dashboard/StatsGrid.tsx`.
+
+**`nima-frontend/src/lib/`:**
+- Purpose: Centralize typed fetch wrappers and response interfaces.
+- Contains: API base URL and endpoint clients.
+- Key files: `nima-frontend/src/lib/api.ts`.
+
+**`templates/`:**
+- Purpose: Keep Flask-rendered HTML fallback UI.
+- Contains: one form template.
+- Key files: `templates/index.html`.
 
 **`training/`:**
-- Purpose: Training data, example scenes, and question bank
-- Contains: `questions.py` (example prompts), `3b1b/` (reference scenes)
+- Purpose: Store reference examples and prompt pools used by generation/prompt APIs.
+- Contains: question sets and large reference corpus folders.
+- Key files: `training/questions.py`, `training/manim_examples_raw.json`.
 
-**`media/`:**
-- Purpose: Rendered video and image outputs
-- Contains: Subdirectories for images and videos, organized by job_id
-
-**`skills/`:**
-- Purpose: GSD command skill definitions
-- Contains: `webapp-testing/`, `fastapi/`, `mcp-builder/`, etc.
+**`.planning/codebase/`:**
+- Purpose: Persist architecture/stack/conventions/testing/concerns docs for automation.
+- Contains: `ARCHITECTURE.md`, `STRUCTURE.md`, `STACK.md`, `INTEGRATIONS.md`, `CONVENTIONS.md`, `TESTING.md`, `CONCERNS.md`.
+- Key files: `.planning/codebase/ARCHITECTURE.md`, `.planning/codebase/STRUCTURE.md`.
 
 ## Key File Locations
 
 **Entry Points:**
-- `app.py` - Flask server startup (line 1240: `app.run()`)
-- `nima-frontend/` - `npm run dev` starts Next.js on port 3000
+- `app.py`: Backend runtime entry and all Flask routes.
+- `nima-frontend/src/app/page.tsx`: Main frontend route for prompt submission.
 
 **Configuration:**
-- `config.py` - Centralized settings (OpenAI, paths, pipeline modes)
+- `config.py`: Backend environment-derived configuration and feature toggles.
+- `nima-frontend/tsconfig.json`: Frontend TypeScript + path alias config.
+- `nima-frontend/next.config.ts`: Next.js runtime config.
 
 **Core Logic:**
-- `algorithms/request_analysis.py` - Request classification and planning (426 lines)
-- `algorithms/ai_functions.py` - Main AI pipeline functions (897 lines)
-- `algorithms/plan/compiler.py` - Plan compilation to Manim code
-- `layout/engine.py` - Zone-based layout calculations
+- `algorithms/request_analysis.py`: Request classification and plan creation.
+- `algorithms/ai_functions.py`: LLM generation, review, and error-fix operations.
+- `algorithms/streaming.py`: Scene splitting, streaming generation, per-scene rendering, stitching.
+- `algorithms/plan/compiler.py`: Deterministic plan compiler.
+- `algorithms/code_digest.py`: Static safety/quality validation checks.
 
-**Frontend:**
-- `nima-frontend/src/app/page.tsx` - Main UI with API integration (392 lines)
-- `nima-frontend/src/app/globals.css` - Tailwind + custom styling (468 lines)
-
-**Database:**
-- `database_schema.sql` - PostgreSQL table definitions
-- `app.py` (ManimDatabase class, lines 104-299) - Database interface
+**Testing:**
+- `test_pipeline.py`: Pipeline-oriented backend tests.
+- `test_streaming_reliability.py`: Streaming reliability tests.
+- `test_edge_cases.py`: Edge-case tests.
+- `test_imports.py`: Import integrity checks.
+- `test_optimizations.py`: Optimization-related tests.
 
 ## Naming Conventions
 
 **Files:**
-- Python modules: `snake_case.py` (e.g., `request_analysis.py`, `ai_functions.py`)
-- React components: `PascalCase.tsx` (e.g., `page.tsx`, `layout.tsx`)
-- Config: `camelCase.py` or `snake_case.py` (e.g., `config.py`)
-- SQL schema: `snake_case.sql`
+- Backend modules: `snake_case.py` (example: `request_analysis.py`).
+- Plan submodules: `snake_case.py` in nested package (example: `algorithms/plan/compiler.py`).
+- Frontend components: `PascalCase.tsx` (example: `VideoPlayer.tsx`).
+- Next.js route files: reserved `page.tsx` and `layout.tsx` in route directories.
 
 **Directories:**
-- Python packages: `snake_case/` (e.g., `algorithms/`, `layout/`, `plan/`)
-- Frontend: `camelCase/` or `kebab-case/` (e.g., `nima-frontend/`)
-
-**Functions/Classes:**
-- Python functions: `snake_case()` (e.g., `generate_manim_code()`, `analyze_request_type()`)
-- Python classes: `PascalCase` (e.g., `ManimDatabase`, `GeneratedScene`)
-- React components: `PascalCase` (e.g., `Home`, `WireframeLoader`)
-
-**Variables:**
-- Python: `snake_case` (e.g., `job_id`, `render_status`, `audio_segments`)
-- TypeScript: `camelCase` for variables, `PascalCase` for types/interfaces
-
-**Types/Interfaces:**
-- TypeScript: `PascalCase` (e.g., `JobStatus`, `Stats` in `page.tsx`)
+- Backend feature groups: lowercase names (example: `algorithms/`, `layout/`, `RAG/`).
+- Frontend app-router routes: nested lowercase route folders under `nima-frontend/src/app/` (example: `dashboard/`, `library/`).
 
 ## Where to Add New Code
 
-**New Algorithm Module:**
-- Location: `algorithms/new_module.py`
-- Import in `app.py`: `from algorithms.new_module import function_name`
+**New backend feature (pipeline behavior):**
+- Primary code: `algorithms/<feature_module>.py`
+- Integration point: import and call from `app.py` route/pipeline function.
 
-**New Frontend Component:**
-- Location: `nima-frontend/src/app/components/` (create if needed)
-- Import in `page.tsx`: `from "./components/ComponentName"`
+**New deterministic plan capability:**
+- Schema updates: `algorithms/plan/schema.py`
+- Compiler updates: `algorithms/plan/compiler.py`
+- Optional layout behavior: `layout/engine.py`
 
-**New Database Table:**
-- Add to `database_schema.sql`
-- Add CRUD methods to `ManimDatabase` class in `app.py`
+**New backend API endpoint:**
+- Route handler: add in `app.py` near related endpoint group.
+- If DB-backed: add helper method to `ManimDatabase` in `app.py` and matching table/index updates in `database_schema.sql`.
 
-**New API Endpoint:**
-- Location: `app.py` (Flask route decorator)
-- Pattern: `@app.route("/api/endpoint", methods=["GET", "POST"])`
+**New frontend page:**
+- Route file: `nima-frontend/src/app/<route>/page.tsx`
+- Shared UI components: `nima-frontend/src/components/`
+- API bindings: `nima-frontend/src/lib/api.ts`
 
-**New Validation Function:**
-- Location: `algorithms/code_digest.py`
-- Export and import where needed
+**New shared frontend utility or API type:**
+- Place in `nima-frontend/src/lib/`.
 
-**New Animation Template:**
-- Location: `algorithms/template_registry.py`
-- Add to `TEMPLATES` dict with slots/beats/notes
+**New tests:**
+- Backend test modules: add root-level `test_*.py` files consistent with existing naming.
 
 ## Special Directories
 
-**`media/`:**
-- Purpose: Rendered video and image outputs from Manim
-- Generated: Yes (by render pipeline)
-- Committed: No (in .gitignore)
+**`nima-frontend/node_modules/`:**
+- Purpose: frontend package dependencies.
+- Generated: Yes.
+- Committed: No.
 
 **`nima-frontend/.next/`:**
-- Purpose: Next.js build cache and artifacts
-- Generated: Yes (by `npm run build` or `npm run dev`)
-- Committed: No (in .gitignore)
+- Purpose: Next.js build/dev artifacts.
+- Generated: Yes.
+- Committed: No.
 
-**`__pycache__/`:**
-- Purpose: Python bytecode cache
-- Generated: Yes (by Python runtime)
-- Committed: No (in .gitignore)
+**`media/`:**
+- Purpose: generated render artifacts.
+- Generated: Yes.
+- Committed: Not detected as required for source control.
 
-**`.ruff_cache/`:**
-- Purpose: Ruff linter cache
-- Generated: Yes
-- Committed: No
+**`__pycache__/` and `.ruff_cache/`:**
+- Purpose: Python bytecode and lint cache.
+- Generated: Yes.
+- Committed: No.
 
 **`.planning/`:**
-- Purpose: GSD planning and analysis documents
-- Generated: Yes (by GSD commands)
-- Committed: Yes
+- Purpose: project planning and codebase intelligence docs.
+- Generated: Yes (by tooling).
+- Committed: Yes.
 
 ---
 
-*Structure analysis: 2026-04-04*
+*Structure analysis: 2026-04-12*

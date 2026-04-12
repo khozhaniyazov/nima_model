@@ -1,207 +1,169 @@
 # Architecture
 
-**Analysis Date:** 2026-04-04
+**Analysis Date:** 2026-04-12
 
 ## Pattern Overview
 
-**Overall:** Client-Server with Pipeline Orchestration
+**Overall:** Monolithic Flask backend orchestrator with modular algorithm services, plus a separate Next.js frontend application.
 
 **Key Characteristics:**
-- Flask backend (Python) serves as the orchestration engine for AI-powered Manim animation generation
-- Next.js frontend (TypeScript/React) provides a reactive UI with job polling
-- Asynchronous job processing with background threads for render tasks
-- Multi-stage AI pipeline: analyze → plan → generate → validate → render → evaluate
-- Self-healing render loop that feeds Manim errors back to LLM for automatic fixes
+- Keep HTTP orchestration and route definitions centralized in `app.py`.
+- Keep domain logic split into modules under `algorithms/`, `RAG/`, and `layout/`.
+- Support two execution architectures: bulk generation (`generate_and_validate_code`) and streaming scene-by-scene generation (`stream_generate_and_render`).
 
 ## Layers
 
-**Frontend (Next.js):**
-- Purpose: User interface for submitting animation prompts and monitoring job status
-- Location: `nima-frontend/src/`
-- Contains: React components, Tailwind CSS styling, API client logic
-- Depends on: Flask API (localhost:5000)
-- Used by: End users via browser
-
-**Backend API (Flask):**
-- Purpose: Orchestrates the animation generation pipeline and exposes REST endpoints
+**HTTP/API Orchestration Layer:**
+- Purpose: Accept requests, schedule background work, expose operational and admin APIs.
 - Location: `app.py`
-- Contains: Flask routes, job management, database operations, pipeline orchestration
-- Depends on: algorithms/, database, config.py, OpenAI API
-- Used by: Next.js frontend via JSON API
+- Contains: Flask routes (`/api/generate`, `/status/<job_id>`, `/stats`, `/api/videos*`, `/api/templates*`, `/api/keys*`, `/api/webhooks*`, `/api/lti/*`), in-memory job state (`render_status`, `job_to_request`), rate limiting.
+- Depends on: `config.py`, `algorithms/*`, `cache.py`, `psycopg2`, Python threading.
+- Used by: `templates/index.html`, Next.js client in `nima-frontend/src/lib/api.ts`, external clients.
 
-**Algorithm Layer:**
-- Purpose: AI-powered code generation, analysis, validation, and rendering
-- Location: `algorithms/`
-- Contains: Request analysis, code generation, review/fix, plan compilation, validation
-- Key files:
-  - `algorithms/request_analysis.py` - Prompt classification and storyboard planning
-  - `algorithms/ai_functions.py` - Core LLM calls for generation, review, fixing, evaluation
-  - `algorithms/code_digest.py` - Validation (syntax, structure, safety, quality)
-  - `algorithms/plan/compiler.py` - JSON plan to Manim code compilation
-  - `algorithms/overlap_detector.py` - Layout overlap detection
-  - `algorithms/template_registry.py` - Animation pattern templates
-  - `algorithms/tts.py` - Text-to-speech voiceover generation
-- Depends on: OpenAI API, RAG system, config settings
-- Used by: app.py pipeline functions
+**Prompt Analysis & Planning Layer:**
+- Purpose: Convert a prompt into structured analysis and plan/stage artifacts.
+- Location: `algorithms/request_analysis.py`, `algorithms/template_registry.py`, `algorithms/plan/schema.py`
+- Contains: Prompt/domain heuristics, duration estimation, narrated plan generation, deterministic plan JSON generation, template lookup.
+- Depends on: OpenAI-compatible client setup and config settings from `config.py`.
+- Used by: `generate_and_validate_code()` and `stream_generate_and_render()` in `app.py`.
 
-**RAG System:**
-- Purpose: Retrieve relevant example code for context-aware generation
-- Location: `RAG/RAG_system.py`
-- Contains: Golden example retrieval based on domain/topic
-- Depends on: Database (for examples)
-- Used by: algorithms/ai_functions.py
+**Code Generation & Repair Layer:**
+- Purpose: Produce Manim code and apply LLM-based fix/review cycles.
+- Location: `algorithms/ai_functions.py`
+- Contains: `generate_manim_code`, `review_and_fix`, `polish_manim_code`, `fix_render_error`, LLM retry/fallback path, helper-code injection.
+- Depends on: `RAG/RAG_system.py`, OpenAI-compatible endpoints from `config.py`.
+- Used by: bulk generation flow and render self-healing in `app.py`.
 
-**Layout Engine:**
-- Purpose: Deterministic zone-based layout for plan compilation
-- Location: `layout/engine.py`
-- Contains: Zone definitions, frame calculations, placement helpers
-- Depends on: Plan schema
-- Used by: algorithms/plan/compiler.py
+**Deterministic Compile Layer:**
+- Purpose: Compile validated plan JSON into deterministic Manim code.
+- Location: `algorithms/plan/compiler.py`, `algorithms/plan/schema.py`, `layout/engine.py`
+- Contains: schema dataclasses and validation, restricted object/action compiler, zone-based placement model.
+- Depends on: `validate_plan_dict()` in `algorithms/plan/schema.py`.
+- Used by: math plan-first path in `generate_and_validate_code()` (`app.py`).
 
-**Database Layer:**
-- Purpose: Persistent storage for requests, generation attempts, render jobs, evaluations
-- Location: `database_schema.sql` (schema), `app.py` (ManimDatabase class)
-- Contains: PostgreSQL schema and connection management
-- Depends on: PostgreSQL
-- Used by: app.py for tracking and quality scoring
+**Validation & Safety Layer:**
+- Purpose: Enforce syntax, safety, structure, and quality constraints before rendering.
+- Location: `algorithms/code_digest.py`, `algorithms/overlap_detector.py`, `app.py` (`validate_in_parallel`)
+- Contains: AST import/call checks, scene-structure checks, quality heuristics, overlap checks.
+- Depends on: Python AST/regex and threaded validation in `app.py`.
+- Used by: both compiled and LLM-generated code paths.
 
-**Configuration:**
-- Purpose: Centralized settings for all modules
-- Location: `config.py`
-- Contains: OpenAI credentials, file paths, pipeline modes, render settings
+**Streaming Scene Pipeline Layer:**
+- Purpose: Generate, render, and stitch scene outputs incrementally.
+- Location: `algorithms/streaming.py`, `app.py` (`stream_generate_and_render`)
+- Contains: `NarrativeContext`, scene splitting/deduping, provider routing (`zjuapi`/`wenwen`/`openai`), scene retry, render/stitch workflow.
+- Depends on: Manim CLI, ffmpeg/ffprobe, provider configuration from `config.py`.
+- Used by: `/api/generate` streaming mode (default true in `app.py`).
+
+**Render & Media Layer:**
+- Purpose: Execute Manim render commands, locate output files, merge narration, and expose media.
+- Location: `app.py` (`_run_manim`, `save_and_render`, `find_video_file`, `/outputs/<path:filename>`), `algorithms/tts.py`
+- Contains: render retries, cache short-circuiting, ffmpeg merge, output discovery.
+- Depends on: `MANIM_SCRIPTS` and `OUTPUTS` paths in `config.py`, system binaries.
+- Used by: bulk and streaming pipelines.
+
+**Persistence & Analytics Layer:**
+- Purpose: Persist pipeline events and serve analytics/query endpoints.
+- Location: `app.py` (`class ManimDatabase`), `database_schema.sql`
+- Contains: SQL helper methods and tables for requests, attempts, render jobs, evaluations, videos, templates, keys, webhooks, LTI platforms.
+- Depends on: PostgreSQL via `DB_CONNECTION_STRING` in `config.py`.
+- Used by: dashboard/library APIs and pipeline logging.
+
+**Frontend Layer:**
+- Purpose: Provide prompt submission UX, job tracking UX, analytics, and video library.
+- Location: `templates/index.html`, `nima-frontend/src/app/page.tsx`, `nima-frontend/src/app/dashboard/page.tsx`, `nima-frontend/src/app/library/page.tsx`
+- Contains: client-side polling and fetch flows to backend endpoints.
+- Depends on: backend APIs exposed by `app.py`.
+- Used by: users and operators.
 
 ## Data Flow
 
-**Request to Animation Flow:**
+**Bulk pipeline (`streaming=false`):**
 
-1. **Frontend Submit** → `nima-frontend/src/app/page.tsx`
-   - User enters prompt, clicks "DEPLOY COMPILE"
-   - POST to `/api/generate` with `{prompt, voiceover}`
+1. POST prompt to `/api/generate` in `app.py`.
+2. Initialize `render_status[job_id]` in `app.py` and spawn background thread.
+3. Run `generate_and_validate_code()` in `app.py`: analyze/plan via `algorithms/request_analysis.py`.
+4. For eligible math cases, compile with `create_plan_json()` + `compile_plan()` (`algorithms/plan/compiler.py`); otherwise generate via `generate_manim_code()` (`algorithms/ai_functions.py`).
+5. Validate with `validate_names_and_imports`, `validate_python_syntax`, `validate_manim_code`, `check_code_quality` (`algorithms/code_digest.py`).
+6. Render through `save_and_render()` in `app.py`; on failures, feed stderr to `fix_render_error()` in `algorithms/ai_functions.py` and retry.
+7. Optionally merge narration via `merge_audio_video()` in `algorithms/tts.py`; persist DB records and expose file via `/outputs/<filename>`.
 
-2. **API Reception** → `app.py:api_generate()`
-   - Creates job_id, initializes render_status[job_id]
-   - Spawns background thread for generation
+**Streaming pipeline (`streaming=true`):**
 
-3. **Analysis** → `algorithms/request_analysis.py:analyze_request_type()`
-   - LLM classifies prompt: type, complexity, topic, domain, duration, subtopics
-
-4. **Planning** → `algorithms/request_analysis.py:create_animation_plan()`
-   - LLM generates scene-by-scene storyboard
-   - Or for math domains: `create_plan_json()` for deterministic compilation
-
-5. **Code Generation** → `algorithms/ai_functions.py:generate_manim_code()`
-   - LLM generates Manim Python code following storyboard
-   - Injects layout helpers and domain-specific guidance
-
-6. **Validation** → `algorithms/code_digest.py`
-   - `validate_python_syntax()` - Check syntax errors
-   - `validate_manim_code()` - Check structure
-   - `validate_names_and_imports()` - Security check
-   - `check_code_quality()` - Quality warnings
-   - `validate_latex_strings()` - Math domain LaTeX validation
-   - `detect_overlaps()` - Layout overlap detection
-
-7. **Review & Fix** → `algorithms/ai_functions.py:review_and_fix()`
-   - Combined review pass for critical errors, layout issues, API corrections
-
-8. **Render** → `app.py:save_and_render()`
-   - Write code to `MANIM_SCRIPTS/` directory
-   - Execute `manim` command via subprocess
-   - Self-healing: on failure, feed stderr to `fix_render_error()` and retry (up to MAX_RENDER_RETRIES)
-
-9. **Voiceover Merge** → `algorithms/tts.py:merge_audio_video()`
-   - If voiceover enabled, merge pre-generated TTS audio with video
-
-10. **Evaluation** → `algorithms/ai_functions.py:evaluate_with_gpt4()`
-    - Score animation quality across dimensions
-    - Store in database for training data
-
-11. **Polling Response** → `nima-frontend/src/app/page.tsx`
-    - Frontend polls `/status/{job_id}` every 1.5s
-    - On "done" status, displays video URL
-    - On "error" status, displays error message
+1. POST prompt to `/api/generate` in `app.py` (default streaming enabled).
+2. Enter `stream_generate_and_render()` in `app.py` and derive mode constraints from `VIDEO_MODES` in `config.py`.
+3. Split plan into scenes via `split_plan_into_scenes()` in `algorithms/streaming.py`.
+4. Generate scenes with narrative carryover from `NarrativeContext` in `algorithms/streaming.py`.
+5. Render each scene via `_render_single_scene()` and retry failed scenes via `retry_scene()`.
+6. Stitch scene MP4 outputs into final file via `stitch_scenes()` in `algorithms/streaming.py`.
 
 **State Management:**
-- `render_status` dict: In-memory job status (status, message, video_file)
-- `job_to_request` dict: Maps job_id to request metadata
-- Database: Persistent history of requests, attempts, renders, evaluations
+- Use process-local dictionaries in `app.py` (`render_status`, `job_to_request`) for live status.
+- Guard shared updates with `_state_lock` in `app.py`.
+- Persist long-lived history in PostgreSQL (`database_schema.sql`) via `ManimDatabase` in `app.py`.
+- Reuse expensive results via `RenderCache` and `PromptCache` in `cache.py`.
 
 ## Key Abstractions
 
-**ManimDatabase:**
-- Purpose: Database interface for persisting pipeline data
-- Location: `app.py` (lines 104-299)
-- Pattern: Connection wrapper with CRUD methods
-- Methods: `save_request()`, `save_generation_attempt()`, `save_render_job()`, `save_ai_evaluation()`, `get_best_examples()`, `get_error_patterns()`, `record_error_pattern()`
+**Job State Record:**
+- Purpose: Represent lifecycle and user-facing status for one generation job.
+- Examples: `render_status` updates in `app.py`; status read in `/status/<job_id>`.
+- Pattern: Mutable dict keyed by job ID with `status`, `message`, and optional media fields.
 
-**generate_and_validate_code():**
-- Purpose: Orchestrates the full AI code generation pipeline
-- Location: `app.py` (lines 309-704)
-- Pattern: Sequential pipeline with early returns for fast path
-- Returns: (code, attempts_log, request_id, attempt_id, audio_segments, segment_order)
+**ManimDatabase Gateway:**
+- Purpose: Single persistence façade for SQL operations.
+- Examples: `class ManimDatabase` in `app.py`; backing schema in `database_schema.sql`.
+- Pattern: `_exec()` wrapper and typed helper methods (`save_request`, `save_render_job`, `save_ai_evaluation`, etc.).
 
-**save_and_render():**
-- Purpose: Manages the render loop with self-healing
-- Location: `app.py` (lines 782-947)
-- Pattern: Retry loop with LLM-powered error correction
-- Handles: Video file detection, audio merge, evaluation, database recording
+**Plan JSON Contract (`v1`):**
+- Purpose: Define a deterministic intermediate representation before code emission.
+- Examples: `Plan`, `Beat`, `ObjectSpec` in `algorithms/plan/schema.py`; `compile_plan()` in `algorithms/plan/compiler.py`.
+- Pattern: Validate first, then compile only whitelisted actions and object kinds.
 
-**Plan Compiler:**
-- Purpose: Compile JSON plan to deterministic Manim code
-- Location: `algorithms/plan/compiler.py`
-- Pattern: Schema-driven code generation
-- Uses: `layout/engine.py` for zone-based placement
+**NarrativeContext:**
+- Purpose: Preserve continuity across streaming scenes.
+- Examples: `NarrativeContext` in `algorithms/streaming.py`.
+- Pattern: Track scene history, object state, camera state, and domain state; inject with `to_context_string()`.
 
 ## Entry Points
 
-**Flask Server:**
-- Location: `app.py` (line 1240: `app.run()`)
-- Triggers: `python app.py` or `start_nima_server.bat`
-- Responsibilities: HTTP server on port 5000, route handling, job orchestration
+**Backend runtime:**
+- Location: `app.py` (`if __name__ == "__main__": ... app.run(...)`)
+- Triggers: `python app.py`
+- Responsibilities: Initialize startup logging/warmup and serve Flask routes.
 
-**Frontend Dev Server:**
-- Location: `nima-frontend/` (Next.js)
-- Triggers: `npm run dev` in nima-frontend directory
-- Responsibilities: Next.js dev server on port 3000, serves UI
+**Root form entry:**
+- Location: `@app.route("/")` in `app.py` with template `templates/index.html`
+- Triggers: Browser GET/POST
+- Responsibilities: Basic non-API prompt flow and status display.
 
-**Job Background Thread:**
-- Location: `app.py:render_async()` (lines 950-974)
-- Triggers: Called after code generation completes
-- Responsibilities: Async render in daemon thread
+**Programmatic generation entry:**
+- Location: `@app.route("/api/generate", methods=["POST"])` in `app.py`
+- Triggers: Next.js app and external clients
+- Responsibilities: Validate payload, rate-limit caller, dispatch streaming/bulk execution, return `job_id`.
+
+**Frontend route entries:**
+- Location: `nima-frontend/src/app/page.tsx`, `nima-frontend/src/app/dashboard/page.tsx`, `nima-frontend/src/app/library/page.tsx`
+- Triggers: Next.js routing
+- Responsibilities: submit prompts, poll statuses, query metrics, browse and play videos.
 
 ## Error Handling
 
-**Strategy:** Multi-layer error handling with self-healing
+**Strategy:** Prefer layered retries and controlled fallbacks before terminal failure.
 
 **Patterns:**
-1. **Generation Errors:** Retry up to MAX_GENERATION_ATTEMPTS with different prompts
-2. **Render Errors:** Parse stderr → `fix_render_error()` → retry up to MAX_RENDER_RETRIES
-3. **Syntax Errors:** Fallback to `polish_manim_code()` for lightweight fixes
-4. **Critical Errors:** Automatic fallback from plan compiler to LLM generation path
-5. **Database Errors:** Graceful degradation (USE_DATABASE=false) - pipeline continues without persistence
-6. **LLM API Errors:** Exponential backoff retry with fallback model support
-
-**Error Pattern Recording:**
-- Failed renders recorded in `error_patterns` table
-- Patterns fed back to `get_error_warnings()` for future generation avoidance
+- LLM retry with exponential backoff/fallback model in `_llm_text_with_retry()` (`algorithms/ai_functions.py`).
+- Render self-healing in `save_and_render()` (`app.py`) using stderr-guided `fix_render_error()`.
+- Scene-level retry in streaming (`retry_scene()` in `algorithms/streaming.py`) to avoid full-job restart.
+- Route-level `try/except` JSON responses in `app.py` for API endpoints.
+- DB error containment via `ManimDatabase._exec()` returning `None` on failures.
 
 ## Cross-Cutting Concerns
 
-**Logging:** Print statements with timing markers (`[TIMING]`, `[DB]`, `[ERR]`, etc.)
-
-**Validation:** 
-- Security: `validate_names_and_imports()` blocks dangerous patterns
-- Syntax: `validate_python_syntax()` before render
-- Structure: `validate_manim_code()` for scene class requirements
-- LaTeX: `validate_latex_strings()` for math domain
-
-**Authentication:** None (localhost only) - API key managed via environment variables
-
-**Voiceover:**
-- TTS generation via OpenAI TTS API
-- Audio-video merge via `merge_audio_video()`
-- Timing contract passed to generation for sync
+**Logging:** Use print-based tracing in `app.py`, `algorithms/ai_functions.py`, `algorithms/streaming.py`, and `algorithms/tts.py`.
+**Validation:** Use `algorithms/code_digest.py` plus plan schema checks in `algorithms/plan/schema.py`.
+**Authentication:** Use API key checks via `require_api_key()` and LTI endpoints under `/api/lti/*` in `app.py`.
 
 ---
 
-*Architecture analysis: 2026-04-04*
+*Architecture analysis: 2026-04-12*

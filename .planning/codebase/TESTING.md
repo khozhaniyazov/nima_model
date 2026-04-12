@@ -1,88 +1,168 @@
-# Testing
+# Testing Patterns
 
-**Analysis Date:** 2026-04-04
+**Analysis Date:** 2026-04-12
 
-## Testing Status
+## Test Framework
 
-**Current State:** No formal test framework configured
+**Runner:**
+- Backend uses script-style Python test harnesses executed directly with `python` (no `pytest`/`unittest` runner config detected).
+- CI config: `.github/workflows/test.yml`.
 
-- No test scripts in `package.json` (frontend)
-- No pytest configuration detected (backend)
-- No unit tests found in codebase
+**Assertion Library:**
+- Native Python `assert` statements in scripts (examples: `test_imports.py`, `test_optimizations.py`).
 
-## Validation Approach
+**Run Commands:**
+```bash
+python test_imports.py              # Quick import/wiring checks
+python test_optimizations.py        # Optimization/flag regression checks
+python test_streaming_reliability.py --count 10 --host http://localhost:5000   # Reliability sweep
+```
 
-The project uses **static analysis validation** instead of traditional unit tests:
+## Test File Organization
 
-### Code Quality Validation (`algorithms/code_digest.py`)
+**Location:**
+- Primary tests are root-level Python scripts (`test_imports.py`, `test_optimizations.py`, `test_pipeline.py`, `test_streaming_reliability.py`, `test_edge_cases.py`).
+- Additional legacy sample test exists under training content (`training/3b1b/videos/_2020/med_test.py`) and is not integrated with CI workflow steps.
 
-**Syntax Validation:**
-- `validate_python_syntax()` - Uses AST parsing to detect syntax errors
-- Runs before any render attempt
+**Naming:**
+- `test_*.py` naming is the dominant pattern at repo root.
 
-**Security Validation:**
-- `validate_names_and_imports()` - AST-based check for forbidden imports/calls
-- Blocks: `exec`, `eval`, `__import__`, `os.system`, `subprocess`, `SVGMobject`, `ImageMobject`
+**Structure:**
+```
+project-root/
+├── test_imports.py                  # static/import and wiring checks
+├── test_optimizations.py            # multi-test function suite + custom runner
+├── test_pipeline.py                 # local end-to-end smoke path
+├── test_streaming_reliability.py    # HTTP-driven reliability harness
+└── test_edge_cases.py               # edge prompt stress wrapper
+```
 
-**Structure Validation:**
-- `validate_manim_code()` - Checks for `class GeneratedScene(Scene)` and `self.play()`
+## Test Structure
 
-**Quality Heuristics:**
-- `check_code_quality()` - Non-blocking warnings for:
-  - MathTex indexing (unstable positions)
-  - Missing `self.wait()` calls
-  - `self.clear()` usage
-  - NumberPlane without opacity styling
-  - Lambda closure issues in loops
+## Test Pyramid / Status
 
-**LaTeX Validation:**
-- `validate_latex_strings()` - Checks brace matching, common math errors
+- Unit-style checks: present but lightweight and mostly static/assertion-driven (`test_imports.py` validates parser outputs and safety checks using in-memory strings).
+- Integration checks: present and dominant (`test_pipeline.py` imports backend functions and attempts generation + render; `test_streaming_reliability.py` interacts with live HTTP server and filesystem outputs).
+- E2E checks: partial/manual via reliability harness against running backend (`/api/generate` + `/status/{job_id}`), but not full browser automation.
+- Current CI status shape (`.github/workflows/test.yml`): runs selective backend scripts (`test_imports.py`, `test_optimizations.py`) plus benchmark; does not run frontend tests and does not run streaming harness by default.
 
-### Overlap Detection (`algorithms/overlap_detector.py`)
+**Suite Organization:**
+```python
+# pattern from `test_optimizations.py`
+def test_config_flags():
+    ...
+    assert ...
+    return True
 
-Static analysis to catch layout issues before rendering:
-- `detect_position_collisions()` - Multiple objects at same position
-- `detect_object_accumulation()` - Too many creates without cleanup
-- `detect_missing_section_cleanup()` - Comment-based sections without cleanup
-- `detect_long_construct()` - Complex scenes without section helpers
-- `detect_stale_copies()` - `.copy()` without original removal
+def run_all_tests():
+    tests = [
+        ("Config Flags", test_config_flags),
+        ...
+    ]
+    for name, test_func in tests:
+        try:
+            if test_func():
+                passed += 1
+        except Exception as e:
+            failed += 1
+```
 
-### Error Parsing (`algorithms/error_parser.py`)
+**Patterns:**
+- Setup pattern: environment variables are set at top of scripts before imports (examples in `test_imports.py`, `test_optimizations.py`, `test_pipeline.py`).
+- Teardown pattern: minimal explicit teardown; most tests rely on process exit and local variable scope.
+- Assertion pattern: direct `assert` with human-readable messages and stdout markers (`[OK]`, `[FAIL]`, `[ERROR]`) in `test_imports.py` and `test_optimizations.py`.
 
-Manim stderr parsing for self-healing:
-- `parse_manim_error()` - Structured error info from stderr
-- `format_error_for_prompt()` - Error formatted for LLM fix prompt
-- Pattern-based error type detection
+## Mocking
 
-### Render Self-Healing (`app.py`)
+**Framework:**
+- No dedicated mocking framework (e.g., `unittest.mock`/`pytest-mock`) is in active use.
 
-Render loop with automatic error recovery:
-- On failure: Parse stderr → Feed to LLM → Get fixed code → Retry
-- Up to `MAX_RENDER_RETRIES` attempts (default: 3)
+**Patterns:**
+```python
+# pattern from `test_imports.py` (module monkeypatch)
+class _FakeOpenAI:
+    def __init__(self, **kw):
+        pass
 
-## Database Testing
+sys.modules["openai"] = type(sys)("openai")
+sys.modules["openai"].OpenAI = _FakeOpenAI
+from algorithms import ai_functions
+```
 
-**Schema:** `database_schema.sql`
+**What to Mock:**
+- External API client constructors and other boundary dependencies at import-time for lightweight smoke tests (`test_imports.py`).
 
-**Tables tracked:**
-- `requests` - User prompts with analysis
-- `generation_attempts` - Code versions with validation results
-- `render_jobs` - Render outcomes (success/failure)
-- `ai_evaluations` - Quality scores
-- `error_patterns` - Known error signatures
-- `training_examples` - Quality-scored examples
+**What NOT to Mock:**
+- Reliability harness intentionally avoids mocks and exercises real HTTP/status/video existence paths (`test_streaming_reliability.py`, `test_edge_cases.py`).
 
-## Quality Scoring
+## Fixtures and Factories
 
-Post-render evaluation via `evaluate_with_gpt4()`:
-- Layout quality
-- Educational value
-- Technical accuracy
-- Pacing
-- Manim idiom usage
+**Test Data:**
+```python
+# pattern from `test_imports.py`
+sample = (
+    "Traceback (most recent call last):\n"
+    '  File "test.py", line 42, in construct\n'
+    "AttributeError: 'Axes' object has no attribute 'foo'\n"
+)
+parsed = parse_manim_error(sample)
+assert parsed["error_type"] == "AttributeError"
+```
 
-Scores stored in database for training data selection.
+**Location:**
+- Inline fixture data in each script; no shared `tests/fixtures/` directory detected.
+
+## Coverage
+
+**Requirements:**
+- No coverage threshold or coverage tooling configured (no `coverage.py`, no `pytest --cov`, no coverage upload step in `.github/workflows/test.yml`).
+
+**View Coverage:**
+```bash
+Not configured
+```
+
+## Test Types
+
+**Unit Tests:**
+- Present as direct function validation and static source-contains checks (e.g., `test_imports.py` checks parser logic; `test_optimizations.py` checks for markers in `app.py`/`algorithms/ai_functions.py`).
+
+**Integration Tests:**
+- Present for backend generation/render flow and HTTP polling flow (`test_pipeline.py`, `test_streaming_reliability.py`, `test_edge_cases.py`).
+
+**E2E Tests:**
+- Browser/UI E2E framework not used (no Playwright/Cypress detected).
+- System-level API E2E-like sweeps are script-driven (`test_streaming_reliability.py`).
+
+## Common Patterns
+
+**Async Testing:**
+```python
+# polling pattern from `test_streaming_reliability.py`
+while time.time() < deadline:
+    last = get_json(f"{host}/status/{job_id}")
+    status = (last.get("status") or "").lower()
+    if status in ("done", "error"):
+        return {...}
+    time.sleep(poll_interval)
+```
+
+**Error Testing:**
+```python
+# pattern from `test_imports.py`
+bad_code = "import os\nfrom manim import *\nclass GeneratedScene(Scene): ..."
+is_safe_bad, bad_issues = validate_names_and_imports(bad_code)
+assert not is_safe_bad, "Should flag os import as forbidden"
+```
+
+## Gaps and Risks
+
+- Frontend tests are not detected (no `*.test.ts(x)`/`*.spec.ts(x)` under `nima-frontend/src` and no frontend test runner config).
+- CI does not execute all root integration scripts (`test_pipeline.py`, `test_streaming_reliability.py`, `test_edge_cases.py` are not in `.github/workflows/test.yml` jobs).
+- Some tests are brittle string-presence checks against source code (examples in `test_optimizations.py` scanning literal snippets in `app.py` and `algorithms/ai_functions.py`), which can fail on benign refactors.
+- Environment-sensitive tests rely on local services/binaries (Flask server availability, ffmpeg/ffprobe, writable output paths), increasing nondeterminism for local runs (`test_pipeline.py`, `test_streaming_reliability.py`, `algorithms/tts.py` behaviors exercised indirectly).
+- No unified test discovery/reporting output format (custom print-based summaries in `test_optimizations.py`) and no machine-readable test report artifacts in CI.
 
 ---
 
-*Testing analysis: 2026-04-04*
+*Testing analysis: 2026-04-12*
