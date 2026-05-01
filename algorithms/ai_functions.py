@@ -650,12 +650,12 @@ RULE 10 — NO SELF.CLEAR(): Replace every self.clear() call with:
 
 RULE 12 — NO MATH INDEXING: Do not use MathTex indexing like eq[0][k] or eq[k].
   Token positions are UNSTABLE and will cause IndexError at render time.
-  
+
   WRONG (will crash):
     eq = MathTex(r"log_{3}(x)=2")
     eq[0][4].set_color(YELLOW)  # CRASH RISK
     ReplacementTransform(eq[0][6].copy(), ...)  # CRASH RISK
-  
+
   RIGHT (stable):
     eq = MathTex(r"log_{3}(x)=2")
     eq.set_color_by_tex("3", YELLOW)  # Safe

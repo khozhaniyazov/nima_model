@@ -343,8 +343,6 @@ def generate_and_validate_code_job(
                 if not latex_valid:
                     has_critical_errors = True
 
-        force_review = has_critical_errors
-
         # In FAST/DRAFT_PIPELINE, skip review entirely unless there are critical errors
         if is_fast:
             if has_critical_errors:

@@ -1570,7 +1570,6 @@ def generate_scene(
 
     scene_desc = scene_plan.get("description", "")
     duration_hint = scene_plan.get("duration_hint", 10)
-    animation_steps = scene_plan.get("animation_steps", [])
 
     # Build generation prompt
     prompt = _build_scene_prompt(scene_plan, context, duration_hint)
