@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- `STREAM_PROVIDER_TOTAL_TIMEOUT` default raised from 90s to 120s. With `gpt-5.4` on `zjuapi.com` and 2200-token caps, per-scene generation routinely lands at 40-90s; the previous 90s default tripped `_partial_scene_content_is_usable` on later scenes even when the provider was healthy. Operators on faster providers can override via env. Closes #9.
+
 ## 2026-03-10
 
 ### Added

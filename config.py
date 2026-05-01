@@ -116,7 +116,11 @@ SHORT_DRAFT_FAST_PATH = (
 STREAM_PROVIDER_FAILURE_COOLDOWN = int(
     os.getenv("STREAM_PROVIDER_FAILURE_COOLDOWN", "180")
 )
-STREAM_PROVIDER_TOTAL_TIMEOUT = int(os.getenv("STREAM_PROVIDER_TOTAL_TIMEOUT", "90"))
+# Default 120s gives ~30s headroom for gpt-5.4 on zjuapi.com whose per-scene
+# generation routinely lands at 40-90s with 2200-token caps. The previous 90s
+# default tripped `_partial_scene_content_is_usable` on later scenes even when
+# the provider was healthy. Override via env when on a faster provider.
+STREAM_PROVIDER_TOTAL_TIMEOUT = int(os.getenv("STREAM_PROVIDER_TOTAL_TIMEOUT", "120"))
 STREAM_PROVIDER_USE_SUBPROCESS = (
     os.getenv("STREAM_PROVIDER_USE_SUBPROCESS", "true").lower() == "true"
 )
