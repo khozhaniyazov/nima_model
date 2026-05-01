@@ -17,7 +17,7 @@ Title: use a conventional prefix:
 ## Verification
 
 - [ ] `ruff check .` passes locally
-- [ ] `pytest tests/` passes locally (197 tests as of last count)
+- [ ] `pytest tests/` passes locally
 - [ ] CI is green on this PR
 
 ## Risk / blast radius
