@@ -1,0 +1,137 @@
+"""Subprocess entry point for LLM provider generation.
+
+Run as a child process by ``algorithms.streaming._generate_with_provider_subprocess``
+so that timeout kills are real (the parent uses ``subprocess.run(..., timeout=...)``).
+
+Invocation:
+    python -X utf8 -m algorithms._streaming_child <payload_path> <output_path>
+
+The payload JSON file must contain::
+
+    {
+        "api_key": str,
+        "base_url": str | None,
+        "model": str,
+        "timeout": int,
+        "stream": bool,
+        "max_tokens": int,
+        "messages": list[dict],
+    }
+
+The child writes the response content (or streamed chunks concatenated) to
+``output_path`` as it arrives. On the ``Unsupported parameter: max_tokens``
+class of 400 errors emitted by some upstream proxies, the child drops
+``max_tokens`` from the request and retries exactly once. The retry is logged
+to stdout so the parent's ``capture_output=True`` surfaces it in operator
+logs.
+
+This module deliberately has no side effects at import time so it can be
+unit-tested. The CLI behavior is gated behind ``if __name__ == "__main__"``.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+
+_MAX_TOKEN_HINTS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
+_MAX_TOKEN_REJECT_PHRASES = (
+    "unsupported parameter",
+    "unrecognized",
+    "is not supported",
+    "not allowed",
+    "is not allowed",
+    "not permitted",
+)
+
+_RETRY_LOG_LINE = (
+    "[STREAM] child: provider rejected max_tokens; retrying without it"
+)
+
+
+def is_max_tokens_unsupported(exc: BaseException) -> bool:
+    """Return True if ``exc`` looks like a 'reject max_tokens' error.
+
+    Matches both the canonical OpenAI ``Unsupported parameter`` phrasing and
+    the common Azure / proxy variants. The matcher requires both a rejection
+    phrase AND a token-hint substring to keep false positives low.
+    """
+    msg = str(exc).lower()
+    if not any(p in msg for p in _MAX_TOKEN_REJECT_PHRASES):
+        return False
+    return any(h in msg for h in _MAX_TOKEN_HINTS)
+
+
+def create_with_retry(create, *, log=print, **kwargs: Any):
+    """Call ``create(**kwargs)``; on a max_tokens rejection, drop the cap and retry once.
+
+    ``create`` is any callable matching ``client.chat.completions.create`` —
+    factored out of the hot path so this helper is trivial to unit-test
+    against a fake.
+
+    ``log`` is the line-emitter used to surface the retry. The default
+    ``print`` writes to stdout so the parent's ``capture_output=True`` picks
+    it up. Tests pass a list-append spy.
+    """
+    try:
+        return create(**kwargs)
+    except Exception as exc:
+        if "max_tokens" in kwargs and is_max_tokens_unsupported(exc):
+            kwargs.pop("max_tokens", None)
+            log(_RETRY_LOG_LINE)
+            return create(**kwargs)
+        raise
+
+
+def write_response(response, output_path: Path, *, stream: bool) -> None:
+    """Persist either a streamed chunk iterator or a single completion to disk."""
+    with output_path.open("w", encoding="utf-8", errors="replace") as out:
+        if stream:
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    out.write(chunk.choices[0].delta.content)
+                    out.flush()
+        else:
+            out.write(response.choices[0].message.content or "")
+            out.flush()
+
+
+def run(payload_path: str, output_path: str) -> int:
+    """CLI entry — load payload, call OpenAI, stream to output. Returns exit code."""
+    from openai import OpenAI
+
+    payload = json.loads(Path(payload_path).read_text(encoding="utf-8"))
+    client = OpenAI(
+        api_key=payload["api_key"],
+        base_url=payload.get("base_url"),
+        timeout=payload.get("timeout") or 60,
+    )
+
+    def _create(**kwargs):
+        # Stream flag is forwarded into the SDK call as-is.
+        return client.chat.completions.create(**kwargs)
+
+    def _stdout_flush(line: str) -> None:
+        print(line, flush=True)
+
+    response = create_with_retry(
+        _create,
+        log=_stdout_flush,
+        model=payload["model"],
+        messages=payload["messages"],
+        stream=payload["stream"],
+        max_tokens=payload["max_tokens"],
+    )
+
+    write_response(response, Path(output_path), stream=bool(payload["stream"]))
+    return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("usage: python -m algorithms._streaming_child <payload> <output>", file=sys.stderr)
+        sys.exit(2)
+    sys.exit(run(sys.argv[1], sys.argv[2]))
