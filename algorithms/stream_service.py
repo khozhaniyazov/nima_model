@@ -225,58 +225,64 @@ def _render_short_final_fallback(
         prior = (existing_completed_renders or {}).get(scene_num)
         prior_path = prior[0] if prior else ""
         prior_ok = bool(prior and prior[1])
-        if (
+        reused = (
             prior_ok
             and prior_path
             and scene.get("_generation_source") == "deterministic_short_fallback"
             and Path(prior_path).exists()
             and validate_video_file(prior_path).ok
-        ):
+        )
+        if reused:
             print(
                 f"[{job_id}] [STREAM] reusing deterministic short fallback "
                 f"for scene {scene_num}"
             )
             path, ok, err = prior_path, True, ""
-            fallback_completed[scene_num] = (path, ok, err)
-            fallback_paths.append(path)
-            continue
-
-        path, ok, err, fallback_context = _render_short_fallback_scene(
-            scene,
-            fallback_context,
-            scene_num,
-            fallback_filename,
-            job_id,
-            profile.render_resolution,
-            profile.quality_flag,
-            profile.fps,
-            profile.scene_timeout_seconds,
-        )
+        else:
+            path, ok, err, fallback_context = _render_short_fallback_scene(
+                scene,
+                fallback_context,
+                scene_num,
+                fallback_filename,
+                job_id,
+                profile.render_resolution,
+                profile.quality_flag,
+                profile.fps,
+                profile.scene_timeout_seconds,
+            )
         fallback_completed[scene_num] = (path or "", ok, err)
         if not (ok and path):
             raise RuntimeError(f"fallback scene {scene_num} failed: {err}")
 
         tts_payload = (scene_tts or {}).get(scene_num)
         if tts_payload and tts_payload.get("path"):
-            narrated_scene = str(
-                Path(path).with_name(f"{Path(path).stem}_tts.mp4")
-            )
-            merged = merge_audio_video(
-                path,
-                {f"scene_{scene_num}": tts_payload},
-                [f"scene_{scene_num}"],
-                narrated_scene,
-            )
-            if merged and Path(merged).exists():
-                merged_validation = validate_video_file(merged)
-                if merged_validation.ok:
-                    path = merged
-                    audio_scene_count += 1
-                else:
-                    print(
-                        f"[{job_id}] [WARN] fallback scene {scene_num} audio merge "
-                        f"failed validation: {merged_validation.error}"
-                    )
+            # When we reused a prior render whose name already ends in
+            # `_tts.mp4`, the per-scene path in the main loop already
+            # successfully muxed audio onto it (see lines ~547-549). Skip the
+            # redundant re-merge but still record it in `audio_scene_count` so
+            # the terminal status reports voiceover coverage correctly.
+            if reused and path.endswith("_tts.mp4"):
+                audio_scene_count += 1
+            else:
+                narrated_scene = str(
+                    Path(path).with_name(f"{Path(path).stem}_tts.mp4")
+                )
+                merged = merge_audio_video(
+                    path,
+                    {f"scene_{scene_num}": tts_payload},
+                    [f"scene_{scene_num}"],
+                    narrated_scene,
+                )
+                if merged and Path(merged).exists():
+                    merged_validation = validate_video_file(merged)
+                    if merged_validation.ok:
+                        path = merged
+                        audio_scene_count += 1
+                    else:
+                        print(
+                            f"[{job_id}] [WARN] fallback scene {scene_num} audio merge "
+                            f"failed validation: {merged_validation.error}"
+                        )
 
         fallback_completed[scene_num] = (path or "", True, "")
         fallback_paths.append(path)
