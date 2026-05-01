@@ -11,13 +11,14 @@ injected via ``sys.modules``.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from algorithms import _streaming_child
+from algorithms import _streaming_child, streaming
 
 
 # ---------------------------------------------------------------------------
@@ -276,3 +277,97 @@ def test_run_non_streamed(tmp_path: Path, fake_openai):
 
     assert rc == 0
     assert output_path.read_text(encoding="utf-8") == "hello-final"
+
+
+# ---------------------------------------------------------------------------
+# Real subprocess smoke: `python -m algorithms._streaming_child` from cwd
+# ---------------------------------------------------------------------------
+
+
+def test_module_invokable_via_dash_m_prints_usage():
+    """`python -m algorithms._streaming_child` must resolve from project root.
+
+    Verifies the parent's `-m` plus `cwd=project_root` plumbing is correct
+    end-to-end. With no args the module exits 2 and writes 'usage:' to stderr.
+    """
+    project_root = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8", "-m", "algorithms._streaming_child"],
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 2
+    assert "usage:" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# Parent plumbing: cwd forwarding + child [STREAM] stdout re-emission
+# ---------------------------------------------------------------------------
+
+
+def test_subprocess_invocation_uses_dash_m_and_project_root_cwd(monkeypatch, capsys):
+    """`_generate_with_provider_subprocess` must spawn child with -m and cwd=project_root."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        captured["cwd"] = kwargs.get("cwd")
+        captured["timeout"] = kwargs.get("timeout")
+        captured["capture_output"] = kwargs.get("capture_output")
+        # Pretend the child wrote nothing to the output file; we won't read
+        # output content because we monkeypatch tempfile to a known dir below.
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(streaming.subprocess, "run", fake_run)
+    # Make the fake openai import a no-op so payload construction succeeds.
+    monkeypatch.setattr(streaming, "STREAM_PROVIDER", "zjuapi")
+    streaming._PROVIDER_COOLDOWNS.clear()
+    monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "api_key", "k")
+    monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "base_url", "zju")
+
+    context = streaming.NarrativeContext(prompt="demo", domain="math")
+    streaming._generate_with_provider_subprocess(
+        "make code", context, "zjuapi", stream=False
+    )
+
+    cmd = captured["cmd"]
+    assert cmd[0] == sys.executable
+    assert "-m" in cmd
+    m_idx = cmd.index("-m")
+    assert cmd[m_idx + 1] == "algorithms._streaming_child"
+    project_root = Path(streaming.__file__).resolve().parent.parent
+    assert captured["cwd"] == str(project_root)
+    assert captured["capture_output"] is True
+
+
+def test_parent_reemits_child_stream_stdout_lines(monkeypatch, capsys):
+    """Parent must scan child stdout and re-emit any `[STREAM]`-prefixed line."""
+
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "boring noise\n"
+                "[STREAM] child: provider rejected max_tokens; retrying without it\n"
+                "more noise\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(streaming.subprocess, "run", fake_run)
+    monkeypatch.setattr(streaming, "STREAM_PROVIDER", "zjuapi")
+    streaming._PROVIDER_COOLDOWNS.clear()
+    monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "api_key", "k")
+    monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "base_url", "zju")
+
+    context = streaming.NarrativeContext(prompt="demo", domain="math")
+    streaming._generate_with_provider_subprocess(
+        "make code", context, "zjuapi", stream=False
+    )
+
+    out = capsys.readouterr().out
+    assert "[STREAM] child: provider rejected max_tokens" in out
+    assert "boring noise" not in out
+    assert "more noise" not in out

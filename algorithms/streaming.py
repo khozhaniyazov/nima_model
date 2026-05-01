@@ -1411,6 +1411,17 @@ def _generate_with_provider_subprocess(
         return content
     except subprocess.TimeoutExpired as exc:
         content = output_path.read_text(encoding="utf-8", errors="replace")
+        # Surface child telemetry the kill captured before SIGKILL — e.g. a
+        # successful max_tokens fallback log from the *first* call where the
+        # *retry* is what timed out. Both bytes and str payloads are possible
+        # depending on platform.
+        partial_stdout = exc.stdout
+        if isinstance(partial_stdout, bytes):
+            partial_stdout = partial_stdout.decode("utf-8", errors="replace")
+        if partial_stdout:
+            for line in partial_stdout.splitlines():
+                if line.startswith("[STREAM]"):
+                    print(line)
         if stream and _partial_scene_content_is_usable(content):
             print(
                 f"[STREAM] Provider {provider_name} subprocess hit {request_timeout}s; "
