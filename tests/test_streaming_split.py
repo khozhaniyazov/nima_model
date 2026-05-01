@@ -1861,6 +1861,299 @@ def test_standard_deterministic_fallback_is_valid_manim_code():
     print("[OK] streaming fallback - standard deterministic variants are valid")
 
 
+def test_classify_retry_error_recognises_overlap_accumulation_and_generic():
+    """The dispatcher must recognise the gate names emitted by the static layout
+    detector so the surgical-repair branch can fire on the right error class.
+    """
+    overlap_err = (
+        "Static layout hygiene risk detected before render: "
+        "[OVERLAP] Line 51 (diagram_core) and line 142 (corner_rays) "
+        "both placed at edge:DOWN with no FadeOut of diagram_core between them."
+    )
+    assert streaming._classify_retry_error(overlap_err) == "overlap"
+
+    accumulation_err = (
+        "Static layout hygiene risk detected before render: "
+        "[ACCUMULATION] weighted create-load 22 but only ~3 cleanup operations."
+    )
+    assert streaming._classify_retry_error(accumulation_err) == "accumulation"
+
+    leftover_err = "[SECTION_LEAK] section objects survived past their narrative window"
+    assert streaming._classify_retry_error(leftover_err) == "leftover"
+
+    edge_err = "4/4 sampled frames crowd frame edges with text"
+    assert streaming._classify_retry_error(edge_err) == "edge_crowding"
+
+    generic_err = "Empty or very short response (12 chars)"
+    assert streaming._classify_retry_error(generic_err) == "generic"
+    print("[OK] streaming retry - classifier branches on gate name")
+
+
+def test_extract_overlap_pair_pulls_object_names_and_anchor():
+    """Surgical overlap branch must pull out both object names and the shared
+    anchor from a static-layout-hygiene error so the retry prompt can name
+    them concretely.
+    """
+    err = (
+        "Static layout hygiene risk detected before render: "
+        "[OVERLAP] Line 51 (diagram_core) and line 142 (corner_rays) "
+        "both placed at edge:DOWN with no FadeOut of diagram_core between them."
+    )
+    pair = streaming._extract_overlap_pair(err)
+    assert pair == ("diagram_core", "corner_rays", "edge:DOWN")
+
+    anchor_err = (
+        "[OVERLAP] Line 12 (icon_row) and line 33 (animate) "
+        "both placed at anchor:card:UP with no FadeOut of icon_row between them."
+    )
+    anchor_pair = streaming._extract_overlap_pair(anchor_err)
+    assert anchor_pair == ("icon_row", "animate", "anchor:card:UP")
+
+    assert streaming._extract_overlap_pair("[ACCUMULATION] weighted create-load 22") is None
+    print("[OK] streaming retry - overlap parser yields names + anchor")
+
+
+def test_build_retry_addendum_overlap_names_offenders_and_demands_fadeout():
+    """The overlap branch must include the specific object names so the model
+    has something concrete to FadeOut, not just a generic 'use FadeOut'.
+    """
+    err = (
+        "Static layout hygiene risk detected before render: "
+        "[OVERLAP] Line 51 (ghost_circle) and line 52 (ghost_square) "
+        "both placed at edge:UP with no FadeOut of ghost_circle between them."
+    )
+    addendum = streaming._build_retry_addendum(err, attempt=1, scene_plan={})
+
+    assert "PREVIOUS ATTEMPT FAILED" in addendum
+    assert "SURGICAL OVERLAP REPAIR" in addendum
+    assert "ghost_circle" in addendum
+    assert "ghost_square" in addendum
+    assert "edge:UP" in addendum
+    assert "FadeOut(ghost_circle)" in addendum
+    # Concrete instruction: rebuild from scratch (not a 'patch the previous code' style).
+    assert "rebuild from scratch" in addendum.lower()
+    print("[OK] streaming retry - overlap addendum names offenders + cleanup primitive")
+
+
+def test_build_retry_addendum_accumulation_branch_caps_simultaneous_objects():
+    err = (
+        "Static layout hygiene risk detected before render: "
+        "[ACCUMULATION] weighted create-load 22 but only ~3 cleanup operations."
+    )
+    addendum = streaming._build_retry_addendum(err, attempt=1, scene_plan={})
+    assert "SURGICAL ACCUMULATION REPAIR" in addendum
+    assert "FadeOut" in addendum
+    # Caps are part of the contract — keeps the model from re-hitting the gate.
+    assert "<= 8" in addendum or "<= 14" in addendum
+    print("[OK] streaming retry - accumulation addendum applies object cap")
+
+
+def test_build_retry_addendum_unknown_gate_falls_back_to_generic_blob():
+    """No gate match + first attempt → just the base preamble (no surgical block).
+
+    Keeps backward compatibility for non-layout failures (manim runtime errors,
+    syntax errors, etc.) so retries don't get over-prescribed irrelevant
+    layout advice.
+    """
+    err = "AttributeError: 'NoneType' object has no attribute 'play'"
+    addendum = streaming._build_retry_addendum(err, attempt=1, scene_plan={})
+    assert "PREVIOUS ATTEMPT FAILED" in addendum
+    assert "SURGICAL" not in addendum
+    print("[OK] streaming retry - non-layout error gets generic addendum only")
+
+
+def test_build_retry_addendum_final_attempt_escalates_when_no_gate_matches():
+    """attempt > 1 with an unrecognised error → escalation paragraph.
+
+    Without surgical tips for the specific gate, at least signal that this
+    is the last shot and the model should rebuild rather than patch.
+    """
+    err = "RuntimeError: ffmpeg returned non-zero"
+    addendum = streaming._build_retry_addendum(err, attempt=2, scene_plan={})
+    assert "final attempt" in addendum.lower()
+    print("[OK] streaming retry - final attempt addendum escalates")
+
+
+def test_build_retry_addendum_attempt2_with_gate_does_not_double_up_escalation():
+    """When a surgical block applies, the attempt-counter escalation must NOT
+    be appended on top — it would contradict the gate-specific guidance.
+
+    Regression guard for the early-return invariant in `_build_retry_addendum`:
+    `if tips: return base + tips` must short-circuit before the
+    `if attempt > 1:` branch.
+    """
+    err = (
+        "Static layout hygiene risk detected before render: "
+        "[OVERLAP] Line 51 (a) and line 52 (b) both placed at edge:UP "
+        "with no FadeOut of a between them."
+    )
+    addendum = streaming._build_retry_addendum(err, attempt=2, scene_plan={})
+    assert "SURGICAL OVERLAP REPAIR" in addendum
+    assert "final attempt" not in addendum.lower()
+    print("[OK] streaming retry - surgical block suppresses attempt-counter escalation")
+
+
+def test_classify_retry_error_does_not_match_text_inside_context():
+    """The 'text overlap' branch must not fire on errors that merely contain
+    the substring 'context' (e.g. 'narrative context overlap detected').
+
+    Regression for the substring-match bug flagged in PR #7 self-review:
+    `'text' in 'context' == True` was routing context-mentioning errors to
+    the caption-lane advice branch.
+    """
+    sneaky = "narrative context overlap detected during retry"
+    assert streaming._classify_retry_error(sneaky) == "generic"
+    # And word-boundary matches still fire correctly.
+    assert streaming._classify_retry_error("OCR scan: text overlap on caption") == "text_overlap"
+    assert streaming._classify_retry_error("ocr quality below threshold") == "text_overlap"
+    print("[OK] streaming retry - 'text' classifier uses word boundaries")
+
+
+def test_extract_overlap_pair_handles_multi_token_edge_and_tup_anchors():
+    """Anchors emitted by `algorithms/overlap_detector.py:_normalize_pos` come
+    in three forms: edge:DIR, edge:UP+LEFT (multi-token), and tup:x,y,z.
+    The regex must capture all three so the surgical block names the right
+    anchor.
+    """
+    multi = (
+        "[OVERLAP] Line 5 (corner_a) and line 8 (corner_b) "
+        "both placed at edge:UP+LEFT with no FadeOut of corner_a between them."
+    )
+    assert streaming._extract_overlap_pair(multi) == ("corner_a", "corner_b", "edge:UP+LEFT")
+
+    tup = (
+        "[OVERLAP] Line 5 (orb_a) and line 8 (orb_b) "
+        "both placed at tup:0.0,0.0,0.0 with no FadeOut of orb_a between them."
+    )
+    assert streaming._extract_overlap_pair(tup) == ("orb_a", "orb_b", "tup:0.0,0.0,0.0")
+
+    # Lowercased input should still parse — guards against future log normalization.
+    lowered = (
+        "[overlap] line 5 (a) and line 8 (b) "
+        "both placed at edge:DOWN with no fadeout of a between them."
+    )
+    assert streaming._extract_overlap_pair(lowered) == ("a", "b", "edge:DOWN")
+    print("[OK] streaming retry - overlap parser handles UP+LEFT, tup:, lowercase")
+
+
+def test_generate_scene_in_loop_retry_appends_surgical_addendum_to_second_prompt(monkeypatch):
+    """End-to-end: when generate_scene's first attempt trips an [OVERLAP] gate,
+    the SECOND-attempt prompt passed to stream_generate must include the
+    surgical OVERLAP REPAIR block — not the old generic blob.
+
+    Regression guard for the wiring at `algorithms/streaming.py:1800-1804`.
+    """
+    context = streaming.NarrativeContext.from_analysis(
+        "Animate a blue circle morphing into a green square.",
+        {"domain": "general", "video_mode": "short", "aspect": "9:16"},
+    )
+    context.domain_state["video_mode"] = "short"
+
+    captured_prompts: list[str] = []
+
+    bad_code = (
+        "from manim import *\n\n"
+        "class GeneratedScene(Scene):\n"
+        "    def construct(self):\n"
+        "        c = Circle()\n"
+        "        s = Square()\n"
+        "        self.play(Create(c))\n"
+        "        self.play(Create(s))\n"
+        "        self.wait(8)\n"
+    ) + " " * 1500
+
+    def fake_stream_generate(prompt, _context):
+        captured_prompts.append(prompt)
+        yield bad_code
+
+    monkeypatch.setattr(streaming, "stream_generate", fake_stream_generate)
+
+    overlap_message = (
+        "Static layout hygiene risk detected before render: "
+        "[OVERLAP] Line 51 (ghost_circle) and line 52 (ghost_square) "
+        "both placed at edge:UP with no FadeOut of ghost_circle between them."
+    )
+
+    def always_overlap(_code, _scene_plan, _context):
+        return overlap_message
+
+    monkeypatch.setattr(streaming, "_reject_layout_hygiene_code", always_overlap)
+
+    scene_plan = {"title": "Ghost morph", "description": "Final beat", "duration_hint": 12}
+    streaming.generate_scene(scene_plan, context, 4, max_retries=2)
+
+    # First prompt: the original (no addendum yet).
+    # Second prompt: must carry the surgical block from the first attempt's failure.
+    assert len(captured_prompts) >= 2
+    second_prompt = captured_prompts[1]
+    assert "PREVIOUS ATTEMPT FAILED" in second_prompt
+    assert "SURGICAL OVERLAP REPAIR" in second_prompt
+    assert "ghost_circle" in second_prompt
+    assert "ghost_square" in second_prompt
+    assert "FadeOut(ghost_circle)" in second_prompt
+    print("[OK] streaming retry - in-loop second attempt receives surgical addendum")
+
+
+def test_retry_scene_includes_surgical_overlap_block_for_overlap_error(monkeypatch):
+    """`retry_scene` (post-render-failure path) must also pick up the surgical
+    tips so render-time overlap failures get the same concrete guidance as
+    in-loop validation failures.
+    """
+    context = streaming.NarrativeContext.from_analysis(
+        "Animate a blue circle morphing into a green square.",
+        {"domain": "general", "video_mode": "short", "aspect": "9:16"},
+    )
+    context.domain_state["video_mode"] = "short"
+
+    captured_prompts: list[str] = []
+
+    good_code = (
+        "from manim import *\n\n"
+        "class GeneratedScene(Scene):\n"
+        "    def construct(self):\n"
+        "        t = Text('ok')\n"
+        "        self.play(Write(t))\n"
+        "        self.wait(8)\n"
+    ) + " " * 1500
+
+    def fake_stream_generate(prompt, _context):
+        captured_prompts.append(prompt)
+        yield good_code
+
+    monkeypatch.setattr(streaming, "stream_generate", fake_stream_generate)
+    # retry_scene runs the full validation gauntlet — keep all gates passing
+    # so we can assert on the prompt that *was* sent.
+    monkeypatch.setattr(streaming, "_reject_layout_hygiene_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_unbounded_long_text_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_static_short_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_short_duration_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_known_bad_patterns", lambda *a, **k: None)
+
+    overlap_error = (
+        "Render produced layout overlap: "
+        "[OVERLAP] Line 7 (panel_a) and line 9 (panel_b) "
+        "both placed at edge:UP with no FadeOut of panel_a between them."
+    )
+
+    scene_plan = {
+        "title": "Retry beat",
+        "description": "Render-failure retry",
+        "duration_hint": 10,
+    }
+    streaming.retry_scene(scene_plan, context, 0, overlap_error)
+
+    assert len(captured_prompts) == 1
+    prompt = captured_prompts[0]
+    assert "SURGICAL OVERLAP REPAIR" in prompt
+    assert "panel_a" in prompt
+    assert "panel_b" in prompt
+    assert "FadeOut(panel_a)" in prompt
+    # Generic LAYOUT RECOVERY REQUIREMENTS block must be suppressed when a gate
+    # classifies (otherwise the prompt double-prescribes layout advice).
+    assert "LAYOUT RECOVERY REQUIREMENTS" not in prompt
+    print("[OK] streaming retry - retry_scene path receives surgical block on overlap")
+
+
 def test_short_provider_timeout_uses_deterministic_short_fallback(monkeypatch):
     """Provider-failure (timeout/empty) early-exit branch engages on short mode.
 
