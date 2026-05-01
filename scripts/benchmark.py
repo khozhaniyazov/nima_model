@@ -291,7 +291,7 @@ def run_full_benchmark():
     # Print summary
     print_summary(report)
 
-    print(f"\n[Benchmark complete. Results saved to benchmark_results.json]")
+    print("\n[Benchmark complete. Results saved to benchmark_results.json]")
 
     return report
 

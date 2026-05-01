@@ -480,8 +480,8 @@ if __name__ == "__main__":
     print(
         f"[OK] Pipeline: {'DRAFT' if DRAFT_PIPELINE else ('FAST' if FAST_PIPELINE else 'FULL')}"
     )
-    print(f"[OK] RAG corpus: 25+ curated patterns")
-    print(f"[OK] Review pass: consolidated (layout + API + pacing)")
+    print("[OK] RAG corpus: 25+ curated patterns")
+    print("[OK] Review pass: consolidated (layout + API + pacing)")
 
     start_manim_warmup_background(
         draft_pipeline=DRAFT_PIPELINE,

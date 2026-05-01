@@ -257,10 +257,10 @@ def _question_segment(topic: str, after_idx: int, question_idx: int, pause_secon
     prompts = [
         f"Which assumption in the current proof of {topic} is doing the most work?",
         f"What line would fail if one assumption behind {topic} were removed?",
-        f"Can you predict the next derivation step before it appears?",
+        "Can you predict the next derivation step before it appears?",
         f"Where does the lemma enter the proof of {topic}?",
-        f"Which step in the worked example mirrors the formal proof?",
-        f"What boundary case would you test before trusting this result?",
+        "Which step in the worked example mirrors the formal proof?",
+        "What boundary case would you test before trusting this result?",
     ]
     prompt = prompts[(question_idx - 1) % len(prompts)]
     return {

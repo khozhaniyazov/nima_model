@@ -91,7 +91,7 @@ def _llm_text_with_retry(prompt_messages, model: str, max_retries: int = 3) -> s
             # Check for 524 error - try fallback model
             if "524" in error_str or "bad_response_status_code" in error_str:
                 if not used_fallback:
-                    print(f"[LLM] Primary model failed with 524, trying fallback...")
+                    print("[LLM] Primary model failed with 524, trying fallback...")
                     try:
                         # Try with fallback client
                         response = fallback_client.chat.completions.create(

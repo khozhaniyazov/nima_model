@@ -71,7 +71,7 @@ print(f"[OK] code_digest — structure valid={ok_struct}")
 # Safety check — SAFE code
 is_safe, issues = validate_names_and_imports(test_code)
 assert is_safe, f"False positive safety flag: {issues}"
-print(f"[OK] code_digest — safe code correctly passes AST check")
+print("[OK] code_digest — safe code correctly passes AST check")
 
 # Safety check — DANGEROUS code (os.system)
 bad_code = "import os\nfrom manim import *\nclass GeneratedScene(Scene):\n    def construct(self):\n        os.system('rm -rf /')\n        self.wait(1)\n"

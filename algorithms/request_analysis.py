@@ -1429,7 +1429,7 @@ def _enforce_question_rules(
                 stem = question_stems[insert_idx % len(question_stems)]
                 q_seg = {
                     "id": f"question_after_{insert_idx}",
-                    "title": f"Check Your Understanding",
+                    "title": "Check Your Understanding",
                     "narration": (
                         f"Pause and think about this question: {stem} "
                         "Take a moment to think about it."
