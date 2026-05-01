@@ -6,7 +6,10 @@
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # Match the ruff we develop against locally. CI installs unpinned ruff,
+    # so bumping this on a release cadence is fine; the goal is to avoid
+    # pre-commit silently passing on rules CI flags (or vice versa).
+    rev: v0.15.6
     hooks:
       - id: ruff
         args: [--fix]
