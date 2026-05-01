@@ -3,7 +3,6 @@ Request analysis — classifies a user prompt and creates an animation storyboar
 """
 
 from openai import OpenAI
-import os
 import re
 import json
 import subprocess
@@ -11,23 +10,18 @@ import sys
 import tempfile
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
     OPENAI_TIMEOUT,
     GENERATION_MODEL,
     FAST_MODEL,
+    REQUEST_ANALYSIS_TIMEOUT,
+    REQUEST_ANALYSIS_USE_SUBPROCESS,
 )
 from algorithms.template_registry import TEMPLATES
 
-REQUEST_ANALYSIS_TIMEOUT_SECONDS = max(
-    10,
-    int(os.getenv("REQUEST_ANALYSIS_TIMEOUT", str(min(int(OPENAI_TIMEOUT or 60), 60)))),
-)
+REQUEST_ANALYSIS_TIMEOUT_SECONDS = REQUEST_ANALYSIS_TIMEOUT
 
 client = OpenAI(
     api_key=OPENAI_API_KEY,
@@ -902,8 +896,7 @@ def _is_codex_model(model: str) -> bool:
 
 
 def _llm_text(prompt_messages, model: str) -> str:
-    use_subprocess = os.getenv("REQUEST_ANALYSIS_USE_SUBPROCESS", "true").lower()
-    if use_subprocess not in {"0", "false", "no", "off"}:
+    if REQUEST_ANALYSIS_USE_SUBPROCESS:
         return _llm_text_subprocess(prompt_messages, model)
     return _llm_text_in_process(prompt_messages, model)
 

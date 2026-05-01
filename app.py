@@ -18,11 +18,8 @@ from flask import Flask
 from flask_cors import CORS
 from typing import Optional, Any
 
-from dotenv import load_dotenv
-
-load_dotenv(override=False)
-
 # ── Config ────────────────────────────────────────────────────────────────────
+# config.py owns the single load_dotenv() call (override=False).
 from config import (
     DB_CONNECTION_STRING,
     USE_DATABASE,
