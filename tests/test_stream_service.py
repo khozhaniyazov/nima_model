@@ -593,6 +593,200 @@ def test_short_final_quality_failure_uses_fallback_render() -> None:
     print("[OK] stream service - short final quality failure uses fallback render")
 
 
+def test_short_final_fallback_reuses_already_deterministic_scene() -> None:
+    """Closes #10: the job-level short fallback should reuse scenes that are
+    already marked `_generation_source == "deterministic_short_fallback"` and
+    have a valid prior render on disk, instead of re-rendering them."""
+    job_id = "streamsvc007b"
+    status = {}
+    webhooks = []
+    # The per-scene fallback already produced this MP4.
+    prior_scene_video = _dummy_video("stream_service_already_det_scene.mp4")
+    # Sentinel: if the reuse guard regresses and re-renders, fake_fallback
+    # will return this path and the assert on `scene_results[0]["video_path"]`
+    # will catch it.
+    rerender_sentinel = _dummy_video("stream_service_already_det_rerender.mp4")
+    fallback_final = _dummy_video("stream_service_already_det_final.mp4")
+
+    deps = _install_stubs(
+        status,
+        webhooks,
+        lambda **kwargs: (
+            [str(prior_scene_video)],
+            kwargs["narrative_context"],
+            [],
+            {0: (str(prior_scene_video), True, "")},
+        ),
+    )
+    original_analyze = stream_service.analyze_video_frames
+    original_fallback = stream_service._render_short_fallback_scene
+    original_stitch = stream_service.stitch_scenes
+    original_split = stream_service.split_plan_into_scenes
+    calls = {"analyze": 0, "fallback": 0}
+    try:
+        # Override the splitter to mark the scene as already deterministic —
+        # this simulates the per-scene fallback path having already done its
+        # work in `algorithms.streaming.generate_scene` (PR #6).
+        stream_service.split_plan_into_scenes = lambda plan_data, max_scenes: [
+            {
+                "scene_id": "scene_0",
+                "description": "deterministic scene",
+                "_generation_source": "deterministic_short_fallback",
+            }
+        ]
+        # Force the job-level fallback path: first analyze fails, second passes.
+        stream_service.analyze_video_frames = lambda path: (
+            calls.__setitem__("analyze", calls["analyze"] + 1)
+            or {
+                "ok": calls["analyze"] > 1,
+                "score": 100 if calls["analyze"] > 1 else 30,
+                "warnings": [] if calls["analyze"] > 1 else ["crowded"],
+                "sampled_frames": 4,
+                "frames": [],
+            }
+        )
+
+        def fake_fallback(*args, **kwargs):  # pragma: no cover - must not run
+            calls["fallback"] += 1
+            return str(rerender_sentinel), True, "", args[1]
+
+        stream_service._render_short_fallback_scene = fake_fallback
+        stream_service.stitch_scenes = (
+            lambda video_paths, output, fps=30: str(fallback_final)
+        )
+
+        output, scene_results, _ = stream_generate_and_render_job(
+            "Explain a visually crowded short with already-deterministic scene",
+            job_id,
+            voiceover=False,
+            video_mode="short",
+            deps=deps,
+        )
+    finally:
+        stream_service.analyze_video_frames = original_analyze
+        stream_service._render_short_fallback_scene = original_fallback
+        stream_service.stitch_scenes = original_stitch
+        stream_service.split_plan_into_scenes = original_split
+
+    assert status.get("status") == "done", status
+    # Key assertion: the job-level retry must have skipped re-rendering.
+    assert calls["fallback"] == 0, (
+        "expected job-level final fallback to reuse already-deterministic "
+        f"scene, but _render_short_fallback_scene was called {calls['fallback']} time(s)"
+    )
+    assert Path(output).exists(), output
+    # The reused video path should be the prior per-scene fallback, not the rerender.
+    assert scene_results[0]["video_path"] == str(prior_scene_video), scene_results
+    print("[OK] stream service - already-deterministic short scene is reused, not re-rendered")
+
+
+def test_short_final_fallback_reuses_already_deterministic_scene_with_tts() -> None:
+    """Closes #10 (voiceover branch): a reused scene whose prior path already
+    ends in `_tts.mp4` (because the per-scene loop merged audio successfully)
+    must NOT re-merge audio in the job-level fallback, but MUST still count
+    toward `fallback_audio_scene_count`."""
+    job_id = "streamsvc007c"
+    status = {}
+    webhooks = []
+    # Prior render whose name already encodes a successful TTS mux upstream.
+    prior_tts_video = _dummy_video("stream_service_already_det_scene_tts.mp4")
+    fallback_final = _dummy_video("stream_service_already_det_tts_final.mp4")
+    fallback_audio = TEST_OUTPUTS / "scene_0_reuse.mp3"
+    fallback_audio.write_bytes(b"fake-audio")
+
+    deps = _install_stubs(
+        status,
+        webhooks,
+        lambda **kwargs: (
+            [str(prior_tts_video)],
+            kwargs["narrative_context"],
+            [],
+            {0: (str(prior_tts_video), True, "")},
+        ),
+    )
+
+    original_analyze = stream_service.analyze_video_frames
+    original_fallback = stream_service._render_short_fallback_scene
+    original_generate_voiceover = stream_service.generate_voiceover
+    original_merge_audio_video = stream_service.merge_audio_video
+    original_audio_probe = stream_service.media_has_audio_stream
+    original_stitch = stream_service.stitch_scenes
+    original_split = stream_service.split_plan_into_scenes
+    calls = {"analyze": 0, "fallback": 0, "merge": 0}
+    try:
+        stream_service.split_plan_into_scenes = lambda plan_data, max_scenes: [
+            {
+                "scene_id": "scene_0",
+                "description": "deterministic scene with tts",
+                "_generation_source": "deterministic_short_fallback",
+            }
+        ]
+        stream_service.analyze_video_frames = lambda path: (
+            calls.__setitem__("analyze", calls["analyze"] + 1)
+            or {
+                "ok": calls["analyze"] > 1,
+                "score": 100 if calls["analyze"] > 1 else 30,
+                "warnings": [] if calls["analyze"] > 1 else ["crowded"],
+                "sampled_frames": 4,
+                "frames": [],
+            }
+        )
+        stream_service.generate_voiceover = lambda segments, output_dir, voice=None: {
+            "scene_0": {
+                "path": str(fallback_audio),
+                "duration": 1.0,
+                "error": None,
+            }
+        }
+
+        def fake_fallback(*args, **kwargs):  # pragma: no cover
+            calls["fallback"] += 1
+            return str(prior_tts_video), True, "", args[1]
+
+        def counting_merge(video_path, audio_segments, segment_order, output_path):
+            calls["merge"] += 1
+            Path(output_path).write_bytes(b"fake-merged-video")
+            return output_path
+
+        stream_service._render_short_fallback_scene = fake_fallback
+        stream_service.merge_audio_video = counting_merge
+        stream_service.media_has_audio_stream = lambda path: True
+        stream_service.stitch_scenes = (
+            lambda video_paths, output, fps=30: str(fallback_final)
+        )
+
+        stream_generate_and_render_job(
+            "Explain a short with reused-tts deterministic scene",
+            job_id,
+            voiceover=True,
+            video_mode="short",
+            deps=deps,
+        )
+    finally:
+        stream_service.analyze_video_frames = original_analyze
+        stream_service._render_short_fallback_scene = original_fallback
+        stream_service.generate_voiceover = original_generate_voiceover
+        stream_service.merge_audio_video = original_merge_audio_video
+        stream_service.media_has_audio_stream = original_audio_probe
+        stream_service.stitch_scenes = original_stitch
+        stream_service.split_plan_into_scenes = original_split
+
+    assert status.get("status") == "done", status
+    assert calls["fallback"] == 0, "reuse must not re-render"
+    # Per-scene main loop calls merge once for the upstream mux. The reuse
+    # path in `_render_short_final_fallback` must NOT call it again.
+    assert calls["merge"] == 1, (
+        f"expected exactly 1 merge call (per-scene path), got {calls['merge']}"
+    )
+    assert status.get("video_quality", {}).get("fallback_audio_scene_count") == 1, (
+        "reused _tts.mp4 scene must still count toward fallback_audio_scene_count"
+    )
+    print(
+        "[OK] stream service - reused deterministic short scene with tts "
+        "skips re-merge but still counts toward audio coverage"
+    )
+
+
 def test_short_final_fallback_preserves_scene_voiceover() -> None:
     job_id = "streamsvc008"
     status = {}
