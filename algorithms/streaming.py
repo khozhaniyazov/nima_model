@@ -1599,8 +1599,16 @@ ACADEMIC LECTURE RULES:
 # layout detector. Mapping a gate to a surgical recovery template lets the
 # retry prompt do something more useful than re-asserting the original storyboard
 # with the raw error blob appended.
+# Anchor token forms emitted by `algorithms/overlap_detector.py:_normalize_pos`:
+#   - edge:<DIR> and the multi-token edge:UP+LEFT case (joined by "+"), so the
+#     character class includes "+".
+#   - anchor:<name> with arbitrary punctuation (e.g. anchor:card:UP).
+#   - tup:x,y,z for raw-coordinate collisions.
+# Without the multi-token edge support and tup: alternation, real overlap
+# warnings either truncate the anchor or fall through to the generic block.
 _OVERLAP_PATTERN = re.compile(
-    r"\[OVERLAP\][^\[\]\n]*?\(([^)]+)\)[^\[\]\n]*?\(([^)]+)\)[^\[\]\n]*?(edge:[A-Z]+|anchor:[^\s,.]+)",
+    r"\[OVERLAP\][^\[\]\n]*?\(([^)]+)\)[^\[\]\n]*?\(([^)]+)\)[^\[\]\n]*?"
+    r"(edge:[A-Z+]+|anchor:[^\s,.]+|tup:[^\s,]+(?:,[^\s,]+){0,2})",
     flags=re.IGNORECASE,
 )
 
@@ -1613,7 +1621,10 @@ def _extract_overlap_pair(error_text: str) -> Optional[tuple[str, str, str]]:
     retry prompt concrete object names so the model has something to hook
     its FadeOut into.
     """
-    if "[OVERLAP]" not in error_text:
+    # Use case-insensitive guard to stay consistent with the IGNORECASE regex
+    # below; the static detector emits uppercase today but a future log
+    # normalizer mustn't silently break extraction.
+    if "[overlap]" not in error_text.lower():
         return None
     match = _OVERLAP_PATTERN.search(error_text)
     if not match:
@@ -1638,7 +1649,10 @@ def _classify_retry_error(error_text: str) -> str:
         return "leftover"
     if "crowd frame edges" in lowered:
         return "edge_crowding"
-    if "ocr" in lowered or "text" in lowered and "overlap" in lowered:
+    # Word-boundary match to avoid 'context' triggering 'text' (substring match
+    # would route any error mentioning narrative/scene context + overlap into
+    # the wrong branch). Reviewer flagged this in the PR #7 self-review.
+    if re.search(r"\bocr\b|\btext\s+overlap\b", lowered):
         return "text_overlap"
     return "generic"
 
@@ -1728,6 +1742,12 @@ def _build_retry_addendum(
     branching on the gate that fired we name the offending objects and
     cleanup primitive so the second attempt can actually recover instead of
     always falling to the deterministic fallback.
+
+    When a surgical block applies, the ``attempt`` counter is intentionally
+    ignored — surgical tips already imply "rebuild from scratch", so the
+    final-attempt escalation paragraph would be redundant or contradictory.
+    The ``scene_plan`` parameter is currently unused and reserved for
+    future per-mode tuning of the surgical templates.
     """
     error_text = str(last_error)
 
