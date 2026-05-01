@@ -1,12 +1,15 @@
 """Quick import and wiring verification — run with: python test_imports.py"""
 import os
+import re
 os.environ["OPENAI_API_KEY"] = "test-key"
 os.environ["USE_DATABASE"] = "false"
+os.environ["GENERATION_MODEL"] = "gpt-5.4"
+os.environ["FAST_MODEL"] = "gpt-5.4"
 
 # ── config ────────────────────────────────────────────────────────────────────
 import config
-assert config.GENERATION_MODEL == "gpt-4o", "Wrong model"
-assert config.FAST_MODEL == "gpt-4o-mini", "Wrong fast model"
+assert config.GENERATION_MODEL == os.environ["GENERATION_MODEL"], "Wrong model"
+assert config.FAST_MODEL == os.environ["FAST_MODEL"], "Wrong fast model"
 print(f"[OK] config — GENERATION_MODEL={config.GENERATION_MODEL}, FAST_MODEL={config.FAST_MODEL}")
 
 # ── error_parser ──────────────────────────────────────────────────────────────
@@ -110,6 +113,8 @@ print(f"[OK] RAG_system — phrase matched: {phrase_patterns[0]['notes'][:50]}")
 # Test golden example non-empty
 golden = retrieve_golden_example("math", "eigenvalue", ["eigenvector", "matrix"])
 assert len(golden) > 100, f"Golden example too short: {len(golden)} chars"
+assert "class GeneratedScene" not in golden, "RAG should provide snippets, not full scene classes"
+assert "from manim import *" not in golden, "RAG should not inject duplicate imports"
 print(f"[OK] RAG golden example — {len(golden)} chars")
 
 # ── ai_functions import ───────────────────────────────────────────────────────
@@ -129,13 +134,58 @@ assert "RULE 1" in ai_functions.REVIEW_SYSTEM, "REVIEW_SYSTEM missing numbered r
 assert "LaTeXError" in ai_functions.FIX_SYSTEM, "FIX_SYSTEM missing LaTeXError recipe"
 print("[OK] Prompts — GENERATION_SYSTEM, REVIEW_SYSTEM, FIX_SYSTEM all upgraded")
 
-# ── app.py render flag check ──────────────────────────────────────────────────
+# ── app.py render profile check ────────────────────────────────────────────────
 with open("app.py", "r") as f:
     app_src = f.read()
+with open("algorithms/webhook_service.py", "r") as f:
+    webhook_src = f.read()
+with open("api_routes/payload.py", "r") as f:
+    payload_src = f.read()
+service_src = app_src
+for path in (
+    "algorithms/generation_service.py",
+    "algorithms/render_service.py",
+    "algorithms/stream_service.py",
+    "algorithms/video_modes.py",
+):
+    with open(path, "r") as f:
+        service_src += "\n" + f.read()
 assert "-pqh" not in app_src, "Old -pqh flag still present in app.py!"
-assert "-qh" in app_src, "New -qh flag not found in app.py"
-assert "validate_names_and_imports" in app_src, "AST validator not wired into app.py"
-print("[OK] app.py — render flag is -qh, AST validator wired in")
+assert "build_video_mode_profile" in service_src, "Mode render profile not wired in"
+assert "validate_names_and_imports" in service_src, "AST validator not wired in"
+assert "def update_job_status" in app_src, "Thread-safe job status helper missing"
+assert "def finish_job_status" in app_src, "Terminal job status helper missing"
+assert "def request_json_object" in payload_src, "Safe JSON payload helper missing"
+assert "def bool_payload" in payload_src, "Bool payload helper missing"
+assert "last_error = " in webhook_src, "Webhook failure path should not depend on an exception variable"
+unsafe_status_writes = [
+    line
+    for line in app_src.splitlines()
+    if re.search(r"render_status\[[^\]]+\]\[[^\]]+\]\s*=", line)
+]
+assert not unsafe_status_writes, f"Direct nested status writes found: {unsafe_status_writes[:3]}"
+from algorithms.video_modes import build_video_mode_profile
+from algorithms.media_tools import apply_watermark_to_video
+from algorithms.job_state import JobStateStore
+from algorithms.stream_service import StreamServiceDeps, stream_generate_and_render_job
+
+draft_profile = build_video_mode_profile("standard", draft=True)
+short_profile = build_video_mode_profile("short")
+assert draft_profile.quality_flag == "-ql", "Draft profile should use low quality"
+assert draft_profile.fps == 10, "Draft profile should use 10 fps"
+assert short_profile.render_resolution == (720, 1280), "Short mode should be vertical"
+assert (
+    apply_watermark_to_video("missing.mp4", "bad") == "missing.mp4"
+), "Watermark helper should tolerate malformed payloads"
+state = JobStateStore()
+state.set_status("job-a", {"status": "queued", "batch_id": "batch-a"})
+state.update_status("job-a", status="done")
+summary = state.batch_summary("batch-a")
+assert summary.total == 1 and summary.completed == 1, "JobStateStore summary broken"
+stream_deps = StreamServiceDeps()
+assert callable(stream_generate_and_render_job), "Stream service entry point missing"
+assert stream_deps.update_status is None, "Stream service deps should be optional"
+print("[OK] app.py — render profiles and AST validator wired in")
 
 print()
 print("=" * 55)

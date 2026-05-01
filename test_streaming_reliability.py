@@ -47,10 +47,27 @@ def get_json(url: str, timeout: float = 20.0) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def backend_available(host: str, timeout: float = 3.0) -> tuple[bool, str]:
+    """Return whether a running backend is reachable at host."""
+    try:
+        health = get_json(f"{host}/health", timeout=timeout)
+    except Exception as exc:
+        return False, str(exc)
+    if (health.get("status") or "").lower() != "ok":
+        return False, f"unexpected health payload: {health}"
+    return True, ""
+
+
 def video_exists(video_file: str) -> bool:
     if not video_file:
         return False
-    return (OUTPUTS / video_file).exists()
+    direct_path = OUTPUTS / video_file
+    if direct_path.exists():
+        return True
+    try:
+        return any(OUTPUTS.rglob(video_file))
+    except OSError:
+        return False
 
 
 def run_one(
@@ -60,12 +77,14 @@ def run_one(
     poll_interval: float,
     voiceover: bool,
     intro_outro: dict | None = None,
+    mode: str = "standard",
 ) -> dict:
     t0 = time.time()
     payload = {
         "prompt": prompt,
         "voiceover": bool(voiceover),
         "streaming": True,
+        "mode": mode,
     }
     if intro_outro:
         payload["intro_outro"] = intro_outro
@@ -124,6 +143,7 @@ def run_one(
                 "failed_scenes": failed_scenes,
                 "scene_success_ratio": success_ratio,
                 "scene_results": scene_results,
+                "video_mode": last.get("video_mode", mode),
             }
 
         time.sleep(poll_interval)
@@ -163,6 +183,7 @@ def run_one(
         "failed_scenes": failed_scenes,
         "scene_success_ratio": success_ratio,
         "scene_results": scene_results,
+        "video_mode": last.get("video_mode", mode) if isinstance(last, dict) else mode,
     }
 
 
@@ -187,7 +208,25 @@ def main() -> int:
         default="course",
         help="Prompt pool to sample from (default: course)",
     )
+    ap.add_argument(
+        "--mode",
+        choices=("short", "standard", "course", "lecture"),
+        default="standard",
+        help="Video mode to request from backend",
+    )
+    ap.add_argument(
+        "--require-server",
+        action="store_true",
+        help="Fail instead of skipping when the backend is not reachable",
+    )
     args = ap.parse_args()
+
+    available, unavailable_reason = backend_available(args.host)
+    if not available:
+        print("Streaming Reliability Harness")
+        print(f"Host: {args.host}")
+        print(f"SKIP: backend is not reachable: {unavailable_reason}")
+        return 1 if args.require_server else 0
 
     print("Streaming Reliability Harness")
     print(f"Host: {args.host}")
@@ -196,6 +235,7 @@ def main() -> int:
     print(f"Voiceover: {args.voiceover}")
     print(f"Branding: {args.branding}")
     print(f"Pool: {args.pool}")
+    print(f"Mode: {args.mode}")
     print("-" * 72)
 
     prompt_pool = list(PROMPT_POOLS[args.pool])
@@ -221,6 +261,7 @@ def main() -> int:
                 args.poll,
                 args.voiceover,
                 intro_outro=intro_outro,
+                mode=args.mode,
             )
         except Exception as e:  # noqa: BLE001
             res = {
