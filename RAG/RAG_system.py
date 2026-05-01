@@ -10,6 +10,7 @@ high-scoring examples.
 from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
+from collections import Counter
 import json
 import re
 from pathlib import Path
@@ -1198,45 +1199,200 @@ _load_json_examples()
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@lru_cache(maxsize=128)
 def retrieve_patterns(
+    domain: str, topic: str, subtopics: tuple | list | None = (), limit: int = 3
+) -> tuple:
+    """Return up to `limit` relevant patterns from the corpus."""
+    subtopics_tuple = tuple(subtopics or ())
+    return _retrieve_patterns_cached(domain, topic, subtopics_tuple, limit)
+
+
+@lru_cache(maxsize=128)
+def _retrieve_patterns_cached(
     domain: str, topic: str, subtopics: tuple = (), limit: int = 3
 ) -> tuple:
     """
     Return up to `limit` relevant patterns from the corpus.
-    Scoring:
-      - +1 for each individual keyword match
-      - +2 bonus for each multi-word tag phrase that appears verbatim in the query
-    Falls back to generic domain patterns if nothing matches.
+
+    Improved scoring:
+      - +1 per keyword match (TF-IDF style weighted: rarer matched tokens score higher)
+      - +3 for exact domain match
+      - +5 for multi-word phrase match
+      - +2 per matching subtopic token
+      - Recency signal: slight boost for newer corpus entries
+      - Diversity penalty: -2 for high-overlap tags vs already selected patterns
+
+    Fallback chain:
+      exact domain+topic -> domain-only -> related-domain -> general frequent patterns
 
     Note: Returns tuple for hashability (required for lru_cache).
     """
     subtopics = subtopics or ()
-    query_text = " ".join([domain, topic] + list(subtopics)).lower().replace("_", " ")
+    domain_norm = (domain or "").lower().strip()
+    topic_norm = (topic or "").lower().strip()
+    subtopic_norm = [s.lower().strip() for s in subtopics if s]
+
+    query_text = " ".join([domain_norm, topic_norm] + subtopic_norm).replace("_", " ")
     query_tokens = set(query_text.split())
+    topic_tokens = set(topic_norm.split()) if topic_norm else set()
+    subtopic_tokens = set(" ".join(subtopic_norm).split()) if subtopic_norm else set()
+
+    token_doc_freq = Counter()
+    for entry in CORPUS:
+        token_space = set()
+        for tag in entry["tags"]:
+            token_space.update(tag.lower().replace("_", " ").split())
+        token_space.update(entry["notes"].lower().replace("_", " ").split())
+        for token in token_space:
+            token_doc_freq[token] += 1
+
+    total_docs = max(len(CORPUS), 1)
+    related_domain_map = {
+        "math": {"physics", "statistics", "computer_science"},
+        "physics": {"math", "chemistry"},
+        "computer_science": {"math", "algorithm", "graph"},
+        "chemistry": {"physics", "biology"},
+    }
+    related_targets = related_domain_map.get(domain_norm, set())
 
     scored = []
-    for entry in CORPUS:
-        score = 0
-        for tag in entry["tags"]:
-            tag_lower = tag.lower()
+    exact_domain_topic = []
+    domain_only = []
+    related_domain = []
+    general = []
+
+    for idx, entry in enumerate(CORPUS):
+        score = 0.0
+        entry_tags_lower = [t.lower().replace("_", " ") for t in entry["tags"]]
+        entry_tag_set = set(entry_tags_lower)
+        entry_text = " ".join(
+            entry_tags_lower + [entry["notes"].lower().replace("_", " ")]
+        )
+
+        for tag_lower in entry_tags_lower:
             tag_words = set(tag_lower.split())
-            # Single keyword match
-            token_overlap = len(query_tokens & tag_words)
-            score += token_overlap
-            # Bonus for whole multi-word phrase match
+            overlap_words = query_tokens & tag_words
+
+            for tok in overlap_words:
+                df = token_doc_freq.get(tok, 1)
+                score += 1.0 + (1.0 / df)
+
             if " " in tag_lower and tag_lower in query_text:
                 score += 5
-        if score > 0:
-            scored.append((score, entry))
+
+            if domain_norm and tag_lower == domain_norm:
+                score += 3
+
+            if tag_words & topic_tokens:
+                score += 2
+
+            if subtopic_tokens:
+                score += 2 * len(tag_words & subtopic_tokens)
+
+        if total_docs > 1:
+            score += idx / (total_docs - 1)
+
+        scored.append((score, entry, entry_tag_set))
+
+        has_domain = domain_norm and domain_norm in entry_text
+        has_topic = topic_tokens and bool(topic_tokens & set(entry_text.split()))
+        if has_domain and has_topic:
+            exact_domain_topic.append(entry)
+        elif has_domain:
+            domain_only.append(entry)
+        elif related_targets and any(rt in entry_text for rt in related_targets):
+            related_domain.append(entry)
+        else:
+            general.append(entry)
 
     scored.sort(key=lambda x: -x[0])
-    if scored:
-        return tuple(e for _, e in scored[:limit])
 
-    # fallback: return first matching domain entries
-    fallback = [e for e in CORPUS if domain.lower() in " ".join(e["tags"]).lower()]
-    return tuple(fallback[:limit]) if fallback else tuple(CORPUS[:2])
+    selected = []
+    selected_tag_sets = []
+    for base_score, entry, tag_set in scored:
+        if len(selected) >= limit:
+            break
+
+        adjusted_score = base_score
+        for existing_tags in selected_tag_sets:
+            overlap = len(tag_set & existing_tags)
+            denom = max(len(tag_set | existing_tags), 1)
+            if overlap / denom >= 0.6:
+                adjusted_score -= 2
+
+        too_similar = any(
+            (len(tag_set & existing) / max(len(tag_set | existing), 1)) >= 0.8
+            for existing in selected_tag_sets
+        )
+        if too_similar:
+            continue
+
+        if adjusted_score > 0:
+            selected.append(entry)
+            selected_tag_sets.append(tag_set)
+
+    if len(selected) < limit:
+        for bucket in (exact_domain_topic, domain_only, related_domain):
+            for entry in bucket:
+                if len(selected) >= limit:
+                    break
+                if entry not in selected:
+                    selected.append(entry)
+
+    if len(selected) < limit and general:
+        general_scored = []
+        for entry in general:
+            freq_score = 0
+            for tag in entry["tags"]:
+                for tok in tag.lower().replace("_", " ").split():
+                    freq_score += token_doc_freq.get(tok, 0)
+            general_scored.append((freq_score, entry))
+        general_scored.sort(key=lambda x: -x[0])
+        for _, entry in general_scored:
+            if len(selected) >= limit:
+                break
+            if entry not in selected:
+                selected.append(entry)
+
+    if not selected:
+        return tuple(CORPUS[:limit])
+    return tuple(selected[:limit])
+
+
+retrieve_patterns.cache_clear = _retrieve_patterns_cached.cache_clear
+retrieve_patterns.cache_info = _retrieve_patterns_cached.cache_info
+
+
+def _strip_scene_boilerplate(pattern: str, *, max_chars: int = 1200) -> str:
+    """Keep retrieved examples as technique snippets, not full scene templates."""
+    text = str(pattern or "").strip()
+    if not text:
+        return ""
+
+    text = re.sub(r"^\s*from\s+manim\s+import\s+\*\s*\n+", "", text, flags=re.M)
+    match = re.search(
+        r"class\s+\w+\s*\([^)]*Scene[^)]*\)\s*:\s*\n\s+def\s+construct\s*\(\s*self\s*\)\s*:\s*\n",
+        text,
+    )
+    if match:
+        body = text[match.end() :]
+        lines = body.splitlines()
+        stripped = []
+        for line in lines:
+            if line.startswith("        "):
+                stripped.append(line[8:])
+            elif line.startswith("    "):
+                stripped.append(line[4:])
+            else:
+                stripped.append(line)
+        text = "\n".join(stripped).strip()
+
+    if len(text) <= max_chars:
+        return text
+    clipped = text[:max_chars].rstrip()
+    if "\n" in clipped:
+        clipped = clipped.rsplit("\n", 1)[0].rstrip()
+    return f"{clipped}\n# ... (technique truncated)"
 
 
 def retrieve_golden_example(
@@ -1253,10 +1409,11 @@ def retrieve_golden_example(
         try:
             examples = db.get_best_examples(domain=domain, limit=2)
             for ex in examples:
+                pattern = _strip_scene_boilerplate(ex.get("final_code", ""), max_chars=1200)
                 sections.append(
                     f"# [OK] HIGH-SCORING EXAMPLE FROM DATABASE (score: {ex['overall_score']}/100)\n"
                     f"# Topic: {ex.get('topic', 'N/A')}\n"
-                    f"{ex['final_code'][:1500]}\n# ... (truncated)\n"
+                    f"{pattern}\n"
                 )
         except Exception:
             pass
@@ -1266,7 +1423,8 @@ def retrieve_golden_example(
     subtopics_tuple = tuple(subtopics) if subtopics else ()
     patterns = retrieve_patterns(domain, topic, subtopics_tuple, limit=3)
     for p in patterns:
-        sections.append(f"# [OK] PROVEN PATTERN: {p['notes']}\n{p['pattern']}")
+        pattern = _strip_scene_boilerplate(p["pattern"], max_chars=1200)
+        sections.append(f"# [OK] PROVEN PATTERN: {p['notes']}\n{pattern}")
 
     if not sections:
         return (

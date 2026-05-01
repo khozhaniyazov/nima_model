@@ -11,6 +11,10 @@ REPORT_DIR = Path(r"C:\temp\outputs\stream_reports")
 
 
 def classify_signature(error_text: str) -> str:
+    """Classify error text into a machine-readable signature.
+
+    Kept in sync with algorithms.streaming.classify_render_error.
+    """
     text = (error_text or "").lower()
     if "camera" in text and "frame" in text:
         return "camera_frame"
@@ -22,6 +26,32 @@ def classify_signature(error_text: str) -> str:
         return "timeout"
     if "syntax error" in text or "was never closed" in text:
         return "syntax_error"
+    if "nameerror" in text or "is not defined" in text:
+        return "name_error"
+    if "attributeerror" in text or "has no attribute" in text:
+        return "attribute_error"
+    if "typeerror" in text:
+        return "type_error"
+    if "latex" in text or "emergency stop" in text or "mathtex" in text:
+        return "latex_error"
+    if "valueerror" in text:
+        return "value_error"
+    if "importerror" in text or "modulenotfounderror" in text:
+        return "import_error"
+    if "recursionerror" in text:
+        return "recursion_error"
+    if "zerodivisionerror" in text:
+        return "zero_division"
+    if "ffmpeg" in text:
+        return "ffmpeg_error"
+    if "memoryerror" in text:
+        return "memory_error"
+    if "keyerror" in text:
+        return "key_error"
+    if "cairo" in text or "pango" in text:
+        return "rendering_engine_error"
+    if "file not found" in text or "video file not found" in text:
+        return "video_not_found"
     return "other_render"
 
 
@@ -64,6 +94,12 @@ def main() -> int:
 
         for err in data.get("errors", []):
             fail_counter[classify_signature(err.get("error", ""))] += 1
+
+        # Also count per-scene error_type when available (new field)
+        for sr in data.get("scene_results", []):
+            if sr.get("status") == "failed":
+                etype = sr.get("error_type") or classify_signature(sr.get("error", ""))
+                fail_counter[etype] += 1
 
     print("Streaming Report Summary")
     print("=" * 72)

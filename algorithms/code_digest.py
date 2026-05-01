@@ -5,6 +5,8 @@ Static code validation utilities — no LLM calls.
 
 import re
 import ast
+import shutil
+from functools import lru_cache
 from typing import List, Tuple
 
 
@@ -33,6 +35,9 @@ _FORBIDDEN_CALLS = {
     "subprocess.Popen",
 }
 _FORBIDDEN_NAMES = {"SVGMobject", "ImageMobject", "manimlib"}
+_FORBIDDEN_GENERATED_TOKENS = {
+    "SurroundingCircle": "Use Circle(...).surround(...) or Circumscribe instead of SurroundingCircle.",
+}
 
 
 def ensure_scene_class(code: str) -> str:
@@ -52,6 +57,139 @@ class GeneratedScene(Scene):
     def construct(self):
 {indented}
 """
+
+
+@lru_cache(maxsize=1)
+def latex_toolchain_available() -> bool:
+    """Return whether Manim's default LaTeX render path can run locally."""
+    return bool(shutil.which("latex") and shutil.which("dvisvgm"))
+
+
+def _latex_to_plain_text(value: str) -> str:
+    text = value
+    # Keep the content of text-like LaTeX wrappers instead of leaving command
+    # names behind as visible labels, e.g. \text{Prime} -> Prime.
+    text = re.sub(
+        r"\\(?:text|mathrm|mathbf|operatorname)\s*\{([^{}]*)\}",
+        r"\1",
+        text,
+    )
+    replacements = {
+        r"\bar": "mean ",
+        r"\frac": " fraction ",
+        r"\sqrt": " sqrt ",
+        r"\sum": "sum",
+        r"\int": "integral",
+        r"\mu": "mu",
+        r"\sigma": "sigma",
+        r"\Delta": "Delta",
+        r"\theta": "theta",
+        r"\alpha": "alpha",
+        r"\beta": "beta",
+        r"\pi": "pi",
+        r"\Rightarrow": "=>",
+        r"\rightarrow": "to",
+        r"\to": "to",
+        r"\leq": "<=",
+        r"\geq": ">=",
+        r"\neq": "!=",
+        r"\cdots": "...",
+        r"\ldots": "...",
+        r"\dots": "...",
+        r"\cdot": "*",
+        r"\times": "x",
+        r"\checkmark": "ok",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    text = re.sub(r"[{}$]", "", text)
+    text = text.replace("\\", "")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip() or value
+
+
+class _TexToTextTransformer(ast.NodeTransformer):
+    _TEXT_KEYWORDS = {
+        "color",
+        "font_size",
+        "font",
+        "slant",
+        "weight",
+        "line_spacing",
+        "t2c",
+        "t2f",
+        "t2g",
+        "t2s",
+        "t2w",
+    }
+
+    def visit_Call(self, node: ast.Call):
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id == "TransformMatchingTex":
+            node.func.id = "TransformMatchingShapes"
+            return node
+
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr == "set_color_by_tex":
+                node.func.attr = "set_color"
+                if len(node.args) >= 2:
+                    node.args = node.args[1:]
+                return node
+            if node.func.attr == "set_color_by_tex_to_color_map":
+                node.func.attr = "set_color"
+                node.args = []
+                node.keywords = []
+                return node
+            if node.func.attr == "get_part_by_tex":
+                return node.func.value
+
+        if not isinstance(node.func, ast.Name) or node.func.id not in {"MathTex", "Tex"}:
+            return node
+
+        text_parts = []
+        dynamic_args = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                text_parts.append(_latex_to_plain_text(arg.value))
+            else:
+                dynamic_args.append(arg)
+
+        if text_parts:
+            args = [ast.Constant(value=" ".join(part for part in text_parts if part))]
+        else:
+            args = dynamic_args[:1] if dynamic_args else [ast.Constant(value="")]
+
+        node.func = ast.Name(id="Text", ctx=ast.Load())
+        node.args = args
+        node.keywords = [
+            keyword
+            for keyword in node.keywords
+            if keyword.arg in self._TEXT_KEYWORDS
+        ]
+        return node
+
+
+def downgrade_tex_to_text_if_needed(
+    code: str,
+    *,
+    latex_available: bool | None = None,
+) -> str:
+    """Replace MathTex/Tex with Text when the local LaTeX toolchain is absent."""
+    has_tex = "MathTex" in code or re.search(r"(?<!Math)Tex\s*\(", code)
+    if not has_tex:
+        return code
+    if latex_available is None:
+        latex_available = latex_toolchain_available()
+    if latex_available:
+        return code
+    try:
+        tree = ast.parse(code)
+        tree = _TexToTextTransformer().visit(tree)
+        ast.fix_missing_locations(tree)
+        return ast.unparse(tree)
+    except Exception as exc:
+        print(f"[LATEX] [WARN] Could not downgrade Tex objects: {exc}")
+        return code
 
 
 def validate_python_syntax(code: str) -> Tuple[bool, str]:
@@ -133,9 +271,26 @@ def validate_manim_code(code: str) -> Tuple[bool, str]:
         if token not in code:
             return False, msg
 
-    # Verify construct has at least one self.play call
-    if "self.play(" not in code:
+    # Verify construct has at least one animation call. Streaming scenes may use
+    # injected focus helpers that call scene.play(...) internally.
+    if "self.play(" not in code and "focus_transition(self" not in code:
         return False, "construct() has no self.play() calls — animation would be empty"
+
+    for token, fix_hint in _FORBIDDEN_GENERATED_TOKENS.items():
+        if token in code:
+            return False, f"Unsupported generated pattern `{token}`. {fix_hint}"
+
+    if re.search(r"(?<!Manim)\bColor\(", code):
+        return (
+            False,
+            "Unsupported generated pattern `Color(`. Use ManimColor(...) or built-in color constants instead of Color(...).",
+        )
+
+    if re.search(r"(?<!\.)\brotate\s*\(", code):
+        return (
+            False,
+            "Unsupported helper `rotate(...)` detected. Use mobject.rotate(...) or import a concrete helper explicitly.",
+        )
 
     return True, ""
 
@@ -209,9 +364,25 @@ def check_code_quality(code: str) -> Tuple[bool, list]:
         issues.append(
             "[ERR] `DashedArrow` does not exist in Manim CE — use `DashedLine(...).add_tip()`"
         )
+    if "SurroundingCircle" in code:
+        issues.append(
+            "[ERR] `SurroundingCircle` does not exist in Manim CE — use Circle(...).surround(...) or Circumscribe"
+        )
+    if re.search(r"(?<!Manim)\bColor\(", code):
+        issues.append(
+            "[ERR] `Color(...)` is not available from `from manim import *` in this runtime — use ManimColor(...) or built-in colors"
+        )
+    if re.search(r"(?<!\.)\brotate\s*\(", code):
+        issues.append(
+            "[ERR] Bare helper `rotate(...)` detected — use mobject.rotate(...) to avoid NameError"
+        )
     if ".tip.length" in code:
         warnings.append(
             "[WARN] `.tip.length =` is read-only — use max_tip_length_to_length_ratio in Arrow() constructor"
+        )
+    if ".side_length" in code and "Line(" in code:
+        warnings.append(
+            "[WARN] `.side_length` referenced in code that also creates Line objects — verify shape-specific properties before render"
         )
 
     # ── Lambda closure in loops (heuristic) ───────────────────────────────────

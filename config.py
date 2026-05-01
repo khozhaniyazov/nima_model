@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv(override=False)
 
 # ── OpenAI ──────────────────────────────────────────────────────────────────
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -62,6 +62,14 @@ RENDER_CACHE_ENABLED = os.environ.get("RENDER_CACHE_ENABLED", "true").lower() ==
 PROMPT_CACHE_ENABLED = os.environ.get("PROMPT_CACHE_ENABLED", "true").lower() == "true"
 CACHE_DIR = OUTPUTS / ".cache"
 
+# ── Job State ────────────────────────────────────────────────────────────────
+JOB_STATE_PERSISTENCE = (
+    os.environ.get("JOB_STATE_PERSISTENCE", "true").lower() == "true"
+)
+JOB_STATE_PATH = Path(os.environ.get("JOB_STATE_PATH", str(OUTPUTS / "job_state.json")))
+BACKGROUND_MAX_WORKERS = int(os.environ.get("BACKGROUND_MAX_WORKERS", "2"))
+WEBHOOK_MAX_WORKERS = int(os.environ.get("WEBHOOK_MAX_WORKERS", "4"))
+
 # ── Asset Preloading ──────────────────────────────────────────────────────
 ASSET_PRELOAD_ENABLED = True
 WARMUP_LATEX = True
@@ -87,8 +95,87 @@ WENWEN_TIMEOUT = int(os.getenv("WENWEN_TIMEOUT", "45"))
 # Options: "auto" (try zjuapi → wenwen → openai), "zjuapi", "wenwen", "openai"
 STREAM_PROVIDER = os.getenv("STREAM_PROVIDER", "auto")
 
-# Streaming pipeline settings
+# ── Streaming pipeline settings
 STREAM_SCENE_TIMEOUT = 30  # Max seconds per scene generation
 STREAM_MAX_SCENES = 20  # Max scenes to split a video into
 STREAM_SCENE_RETRIES = 2  # Max retries per scene on failure
-STREAM_PARALLEL_RENDERS = 2  # Number of scenes to render in parallel
+STREAM_PARALLEL_RENDERS = (
+    1  # Keep TeX renders serialized to avoid MiKTeX file locks on Windows
+)
+SHORT_DRAFT_FAST_PATH = (
+    os.environ.get("SHORT_DRAFT_FAST_PATH", "false").lower() == "true"
+)
+
+# ── Video Modes ──────────────────────────────────────────────────────────────
+# Each mode defines duration, scene budget, question behaviour, and aspect ratio.
+# Modes are selected explicitly via API parameter `mode`.
+VIDEO_MODES = {
+    "short": {
+        "label": "Short (Instagram/TikTok)",
+        "duration_range": (55, 60),  # seconds — strict
+        "target_duration": 58,
+        "max_scenes": 5,
+        "min_scenes": 2,
+        "aspect": "9:16",
+        "questions": {
+            "enabled": True,
+            "count": 1,  # exactly 1 open question
+            "placement": "end",  # only at the very end
+            "pause_seconds": 0,  # no pause — just the question text
+            "cta_text": "Type your answer in the comments!",
+        },
+        "narration_style": "punchy, fast-paced, hook-first, social-media-friendly",
+        "complexity_cap": "BASIC",
+    },
+    "standard": {
+        "label": "Standard (2–5 min)",
+        "duration_range": (120, 300),
+        "target_duration": 240,
+        "max_scenes": 12,
+        "min_scenes": 4,
+        "aspect": "16:9",
+        "questions": {
+            "enabled": False,  # pure information, no questions
+        },
+        "narration_style": "clear, educational, well-paced",
+        "complexity_cap": None,  # no cap
+    },
+    "course": {
+        "label": "Course (≈15 min)",
+        "duration_range": (600, 900),
+        "target_duration": 900,
+        "max_scenes": 40,
+        "min_scenes": 25,
+        "aspect": "16:9",
+        "questions": {
+            "enabled": True,
+            "placement": "spaced",  # distributed throughout
+            "pause_seconds": 10,  # 10s thinking pause per question
+            "min_questions": 8,
+            "max_questions": 14,
+        },
+        "narration_style": "thorough, builds intuition step-by-step, uses recap transitions",
+        "complexity_cap": None,
+    },
+    "lecture": {
+        "label": "Lecture (30+ min)",
+        "duration_range": (1200, 2400),
+        "target_duration": 1800,
+        "max_scenes": 40,
+        "min_scenes": 15,
+        "aspect": "16:9",
+        "questions": {
+            "enabled": True,
+            "placement": "spaced",
+            "pause_seconds": 10,
+            "min_questions": 5,
+            "max_questions": 12,
+        },
+        "narration_style": "formal academic, thorough derivations, lecture-hall pacing",
+        "complexity_cap": None,
+        "stub": True,  # not fully implemented yet
+        "stub_cap_seconds": 900,  # cap at 15 min until full implementation
+    },
+}
+
+DEFAULT_VIDEO_MODE = "standard"

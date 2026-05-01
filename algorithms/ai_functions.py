@@ -258,28 +258,44 @@ def get_domain_specific_guidance(domain: str) -> str:
 """,
         "physics": """\
 **PHYSICS VISUALIZATION — REQUIRED TECHNIQUES:**
-- Represent forces as colored Arrow objects (length ∝ magnitude).
-- Use ArrowVectorField or StreamLines for field visualizations.
+- Represent forces as colored Arrow objects: Arrow(start, end, buff=0, color=RED). length should be proportional to magnitude.
+- For electric/magnetic fields: ArrowVectorField for discrete vectors, StreamLines for continuous flow.
+- For rotational motion (torque, angular momentum): CurvedArrow with angle label.
+- Pendulum/spring oscillations: ValueTracker for angle/time, always_redraw for position.
+- Wave superposition: two waves merging into a resultant waveform.
+- Force diagrams: multiple Arrow vectors from object center with MathTex labels.
+- Use Arrow(length=magnitude, buff=0) for force vectors.
+- Label vectors with MathTex showing magnitude and direction.
+- Color encodes physical quantity: BLUE=low energy, RED=high energy, GREEN=neutral.
+- Use DashedLine for reference/equilibrium positions.
+- Label axes with units: MathTex(r"x (m)") style.
 - ValueTracker controls time; always_redraw updates positions each frame.
-- Show energy as color (e.g., BLUE = low KE, RED = high KE).
-- Use DashedLine for reference / equilibrium lines.
-- Label x/y axes clearly; show units in axis labels.
 """,
         "computer_science": """\
 **CS VISUALIZATION — REQUIRED TECHNIQUES:**
-- Arrays: Row of Rectangle+Text VGroups, color YELLOW for active comparison, GREEN for sorted.
-- Trees: Circle+Text nodes, Line edges, build level-by-level with LaggedStart.
-- Graphs: Dot nodes + Line edges, highlight traversal path with color changes.
-- Use Text for pseudocode steps, Show each step as it executes.
-- Avoid using real file I/O or external images — all visuals must be pure Manim objects.
+- Arrays: VGroup(Rectangle(width=0.8, height=0.6), Text(str(val), font_size=24)).arrange(RIGHT, buff=0.1). Add index labels below.
+- Array sorting: YELLOW for active comparison, GREEN for sorted, RED for swap.
+- Trees: Circle(radius=0.4, color=BLUE) with Text inside, connected by Line. Build level-by-level with LaggedStart.
+- Tree traversal: Use Indicate(node, color=YELLOW) to highlight current node.
+- Graphs: Dot nodes + Line edges, highlight BFS/DFS path with color changes.
+- Linked list: Circle nodes with Arrow between them.
+- Stack/queue: Vertical arrangement with push/pop animations.
+- Sorting algorithms: Show swap with ReplacementTransform, not direct assignment animation.
+- Pseudocode: Text object, highlight current line with background color.
+- Avoid file I/O or external images — all visuals must be pure Manim objects.
 """,
         "chemistry": """\
 **CHEMISTRY VISUALIZATION — REQUIRED TECHNIQUES:**
-- Build molecules from Dot (atoms) + Line (bonds).
-- Use standard CPK colors: H=WHITE, C=GREY, O=RED, N=BLUE, S=YELLOW.
-- Show reaction mechanisms: curved Arrow from bond to bond.
-- Animate bond breaking: Uncreate the Line, then separate atom Dots.
-- Side-by-side: reactants on LEFT, products on RIGHT, arrow in MIDDLE.
+- CPK coloring: H=WHITE, C=GREY, O=RED, N=BLUE, S=YELLOW, Cl=GREEN, P=ORANGE.
+- Atoms: Dot(radius=0.3) with MathTex label nearby (e.g., MathTex("O").next_to(dot, UP)).
+- Bonds: Line(start, end) with optional SingleBond/DoubleBond/TripleBond semantics.
+- Molecule building: position atoms first, then draw bonds between them.
+- Reactions: reactants on LEFT, arrow in CENTER, products on RIGHT.
+- Reaction mechanisms: CurvedArrow for electron movement.
+- Bond breaking: Uncreate the Line bond first, then animate separate Dot atoms.
+- Electron orbitals/shells: concentric circles with partial opacity.
+- Periodic table highlighting: Rectangle cell grid with emphasized groups.
+- Show stereochemistry with wedge/dash notation where relevant.
 """,
     }
     return guides.get(domain, "")

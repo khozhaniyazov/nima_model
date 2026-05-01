@@ -18,6 +18,10 @@ load_dotenv()
 
 # Default voice for edge-tts (Microsoft neural voices)
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-GuyNeural")
+from algorithms.media_tools import (
+    ffmpeg_command as _ffmpeg_command,
+    ffprobe_command as _ffprobe_command,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -43,7 +47,7 @@ def generate_segment_audio(text: str, output_path: str, voice: str = None) -> fl
         "sage",
     ):
         voice = EDGE_TTS_VOICE
-    print(f'[TTS] Generating: "{text[:60]}..." → {Path(output_path).name}')
+    print(f'[TTS] Generating: "{text[:60]}..." -> {Path(output_path).name}')
 
     import edge_tts
 
@@ -76,7 +80,7 @@ def _get_audio_duration(path: str) -> float:
     try:
         result = subprocess.run(
             [
-                "ffprobe",
+                *_ffprobe_command(),
                 "-v",
                 "quiet",
                 "-show_entries",
@@ -101,7 +105,7 @@ def _get_video_duration(path: str) -> float:
     try:
         result = subprocess.run(
             [
-                "ffprobe",
+                *_ffprobe_command(),
                 "-v",
                 "quiet",
                 "-show_entries",
@@ -168,7 +172,7 @@ def generate_voiceover(
             continue
 
         audio_path = str(Path(output_dir) / f"{seg_id}.mp3")
-        tasks.append((seg_id, text, audio_path, voice or TTS_VOICE))
+        tasks.append((seg_id, text, audio_path, voice or EDGE_TTS_VOICE))
 
     # Generate all audio segments in parallel
     if tasks:
@@ -236,7 +240,7 @@ def merge_audio_video(
 
         subprocess.run(
             [
-                "ffmpeg",
+                *_ffmpeg_command(),
                 "-y",
                 "-f",
                 "concat",
@@ -255,7 +259,7 @@ def merge_audio_video(
     # Merge narration with video
     # Use -longest (via lavfi) to keep full audio even if video is shorter
     # This prevents narration from being cut mid-sentence
-    print(f"[MERGE] Merging audio + video → {Path(output_path).name}")
+    print(f"[MERGE] Merging audio + video -> {Path(output_path).name}")
 
     # Get audio duration to check if we need to extend video
     audio_duration = _get_audio_duration(narration_path)
@@ -264,11 +268,11 @@ def merge_audio_video(
     if audio_duration > video_duration + 0.5:
         # Audio longer than video — extend video with freeze-frame
         print(
-            f"[MERGE] Extending video {video_duration:.1f}s → {audio_duration:.1f}s (freeze last frame)"
+            f"[MERGE] Extending video {video_duration:.1f}s -> {audio_duration:.1f}s (freeze last frame)"
         )
         result = subprocess.run(
             [
-                "ffmpeg",
+                *_ffmpeg_command(),
                 "-y",
                 "-i",
                 video_path,
@@ -297,7 +301,7 @@ def merge_audio_video(
         # Video longer or equal — just merge, audio ends naturally
         result = subprocess.run(
             [
-                "ffmpeg",
+                *_ffmpeg_command(),
                 "-y",
                 "-i",
                 video_path,

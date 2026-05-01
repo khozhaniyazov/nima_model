@@ -41,6 +41,47 @@ def _extract_vgroup_children(code: str) -> Dict[str, List[str]]:
     return vgroup_children
 
 
+def _extract_balanced_call_arg(line: str, call_name: str) -> str | None:
+    """Extract a simple balanced argument string from `.<call_name>(...)`."""
+    marker = f".{call_name}("
+    start = line.find(marker)
+    if start < 0:
+        return None
+    cursor = start + len(marker)
+    depth = 1
+    quote: str | None = None
+    escaped = False
+    chars = []
+    while cursor < len(line):
+        char = line[cursor]
+        cursor += 1
+        if quote:
+            chars.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in ("'", '"'):
+            quote = char
+            chars.append(char)
+            continue
+        if char == "(":
+            depth += 1
+            chars.append(char)
+            continue
+        if char == ")":
+            depth -= 1
+            if depth == 0:
+                return "".join(chars).strip()
+            chars.append(char)
+            continue
+        chars.append(char)
+    return None
+
+
 def _extract_positions(code: str) -> List[Tuple[str, str, int]]:
     """Extract (variable_or_desc, position_expr, line_no) from move_to / to_edge calls."""
     results = []
@@ -51,30 +92,26 @@ def _extract_positions(code: str) -> List[Tuple[str, str, int]]:
         m = re.search(r"(\w+)\.move_to\((.+?)\)", stripped)
         if m:
             var_name, pos_expr = m.group(1), m.group(2).strip()
+            pos_expr = _extract_balanced_call_arg(stripped, "move_to") or pos_expr
             if var_name in vgroup_children:
-                for child in vgroup_children[var_name]:
-                    norm_pos = _normalize_pos(pos_expr)
-                    results.append((f"{var_name}.{child}", f"{norm_pos}@child", i))
+                results.append((var_name, _normalize_pos(pos_expr), i))
             else:
                 results.append((var_name, _normalize_pos(pos_expr), i))
         elif ").move_to(" in stripped:
             assign_m = re.match(r"\s*(\w+)\s*=\s*.+\.move_to\((.+?)\)", stripped)
             if assign_m:
                 var_name, pos_expr = assign_m.group(1), assign_m.group(2).strip()
+                pos_expr = _extract_balanced_call_arg(stripped, "move_to") or pos_expr
                 if var_name in vgroup_children:
-                    for child in vgroup_children[var_name]:
-                        norm_pos = _normalize_pos(pos_expr)
-                        results.append((f"{var_name}.{child}", f"{norm_pos}@child", i))
+                    results.append((var_name, _normalize_pos(pos_expr), i))
                 else:
                     results.append((var_name, _normalize_pos(pos_expr), i))
         m = re.search(r"(\w+)\.to_edge\(([^,)]+)", stripped)
         if m:
             var_name, edge_expr = m.group(1), m.group(2).strip()
+            edge_expr = _extract_balanced_call_arg(stripped, "to_edge") or edge_expr
             if var_name in vgroup_children:
-                for child in vgroup_children[var_name]:
-                    results.append(
-                        (f"{var_name}.{child}", _normalize_edge_pos(edge_expr), i)
-                    )
+                results.append((var_name, _normalize_edge_pos(edge_expr), i))
             else:
                 results.append((var_name, _normalize_edge_pos(edge_expr), i))
 
@@ -90,6 +127,13 @@ def _normalize_pos(expr: str) -> str:
         expr = expr + ")"
     expr = expr.replace("ORIGIN+UP*0.0", "ORIGIN")
     expr = expr.replace("np.array([0,0,0])", "ORIGIN")
+    anchor_match = re.search(r"\b(\w+)\.get_center\(\)", expr)
+    if anchor_match:
+        anchor = anchor_match.group(1)
+        offsets = "+".join(
+            re.findall(r"\b(UP|DOWN|LEFT|RIGHT|ORIGIN)\b(?:\*[+-]?[0-9.]+)?", expr)
+        )
+        return f"anchor:{anchor}:{offsets or 'CENTER'}"
     np_m = re.search(
         r"np\.array\(\[([+-]?[0-9.]+\s*,\s*[+-]?[0-9.]+(?:\s*,\s*[+-]?[0-9.]+)?)\]\)",
         expr,
@@ -151,6 +195,36 @@ def _has_removal_between(between: str, var_name: str) -> bool:
     return any(re.search(pattern, between) for pattern in patterns)
 
 
+def _is_decorative_container_name(var_name: str) -> bool:
+    base = var_name.split(".")[-1].lower()
+    return any(
+        token in base
+        for token in (
+            "background",
+            "backdrop",
+            "badge",
+            "box",
+            "card",
+            "container",
+            "fill",
+            "frame",
+            "highlight",
+            "halo",
+            "outline",
+            "panel",
+            "plate",
+            "rect",
+            "ring",
+            "tile",
+        )
+    )
+
+
+def _is_lifecycle_tracking_name(var_name: str) -> bool:
+    base = var_name.split(".")[-1].lower()
+    return base in {"sec", "section", "current_section", "previous_section"}
+
+
 def detect_position_collisions(code: str) -> List[str]:
     """Find multiple objects placed at the same position without FadeOut between them."""
     warnings = []
@@ -159,7 +233,11 @@ def detect_position_collisions(code: str) -> List[str]:
 
     pos_map = {}
     for var, pos_expr, line_no in positions:
-        norm = _normalize_pos(pos_expr)
+        norm = (
+            pos_expr
+            if pos_expr.startswith(("anchor:", "edge:", "tup:"))
+            else _normalize_pos(pos_expr)
+        )
         if norm not in pos_map:
             pos_map[norm] = []
         pos_map[norm].append((var, line_no))
@@ -176,6 +254,10 @@ def detect_position_collisions(code: str) -> List[str]:
             if var_b.startswith("_"):
                 continue
             if var_a == var_b:
+                continue
+            if _is_lifecycle_tracking_name(var_a) or _is_lifecycle_tracking_name(var_b):
+                continue
+            if _is_decorative_container_name(var_a) or _is_decorative_container_name(var_b):
                 continue
 
             between = "\n".join(lines[line_a : line_b - 1])
@@ -200,6 +282,15 @@ def detect_object_accumulation(code: str) -> List[str]:
     start_count = len(re.findall(r"start_section\(self", code))
     end_count = len(re.findall(r"end_section\(", code))
     helpers_used = start_count >= 2 and end_count >= 1
+    helper_return_used = bool(
+        re.search(r"return\s+.*\b(section|sec\w*)\b", code)
+        or re.search(r"\b(section|sec\w*)\s*=\s*start_section\(self", code)
+    )
+
+    vgroup_children_total = 0
+    for group_expr in re.findall(r"VGroup\(([^)]*)\)", code):
+        children = [c.strip() for c in group_expr.split(",") if c.strip()]
+        vgroup_children_total += len(children)
 
     size_weights = {
         "NumberPlane": 5,
@@ -211,14 +302,23 @@ def detect_object_accumulation(code: str) -> List[str]:
     for obj_type, weight in size_weights.items():
         count = len(re.findall(rf"({obj_type})\(", code))
         weighted_creates += count * (weight - 1)
+    weighted_creates += max(
+        vgroup_children_total - len(re.findall(r"VGroup\(", code)), 0
+    )
 
     effective_cleanup = fadeouts + (clear_all * 5)
 
-    if helpers_present and start_count > 0 and end_count == 0:
+    if start_count > 0 and end_count == 0:
         warnings.append(
             "[SECTION_HELPERS_UNUSED] start_section called but no end_section found. "
             "For multi-step scenes you MUST wrap steps in start_section()/end_section() "
             "and add created objects to the returned `section` group."
+        )
+
+    if start_count > 0 and not helper_return_used:
+        warnings.append(
+            "[SECTION_HELPERS_UNUSED] start_section is used but section return value "
+            "is not tracked/returned. Ensure section groups are returned and re-used for cleanup."
         )
 
     if helpers_present and not helpers_used:
@@ -228,11 +328,54 @@ def detect_object_accumulation(code: str) -> List[str]:
             "and add created objects to the returned `section` group."
         )
 
-    if creates > 10 and effective_cleanup < creates * 0.4:
+    if weighted_creates > 10 and effective_cleanup < weighted_creates * 0.4:
         warnings.append(
-            f"[ACCUMULATION] {creates} objects created but only ~{effective_cleanup} "
+            f"[ACCUMULATION] weighted create-load {weighted_creates} but only ~{effective_cleanup} "
             f"cleaned up. Risk of cluttered screen. Use section lifecycle helpers or add FadeOut between steps."
         )
+
+    # Detect queue buildup: long streaks of Create/Write/FadeIn without waits/cleanup.
+    lines = code.splitlines()
+    streak = 0
+    max_streak = 0
+    for line in lines:
+        stripped = line.strip()
+        if re.search(r"self\.play\((Create|Write|FadeIn)\(", stripped):
+            streak += 1
+            max_streak = max(max_streak, streak)
+            continue
+        if (
+            "self.wait(" in stripped
+            or "FadeOut(" in stripped
+            or "self.remove(" in stripped
+            or "Transform(" in stripped
+            or "ReplacementTransform(" in stripped
+        ):
+            streak = 0
+            continue
+    if max_streak >= 5:
+        warnings.append(
+            f"[ANIMATION_QUEUE] {max_streak} successive Create/Write/FadeIn calls without waits/cleanup. "
+            "Risk of visual queue buildup and clutter."
+        )
+
+    # Detect repeated animation churn on same object.
+    churn_counts: Dict[str, int] = {}
+    for line in lines:
+        m = re.search(
+            r"self\.play\((?:Create|Write|FadeIn|FadeOut|Transform|ReplacementTransform)\((\w+)",
+            line,
+        )
+        if m:
+            obj = m.group(1)
+            churn_counts[obj] = churn_counts.get(obj, 0) + 1
+    for obj, count in churn_counts.items():
+        if count >= 4:
+            warnings.append(
+                f"[ANIMATION_CHURN] Object '{obj}' is animated {count} times in sequence. "
+                "Consider consolidating transitions or cleanup steps."
+            )
+            break
 
     return warnings
 
@@ -491,6 +634,8 @@ def detect_stale_copies(code: str) -> List[str]:
 
     for m in copy_matches:
         original_var = m.group(1)
+        if _is_decorative_container_name(original_var):
+            continue
         after_copy = code[m.end() :]
         # Check next 20 lines for FadeOut of original
         after_lines = after_copy.split("\n")[:20]

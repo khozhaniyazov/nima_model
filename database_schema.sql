@@ -103,3 +103,126 @@ CREATE TABLE IF NOT EXISTS training_examples (
 );
 CREATE INDEX idx_training_quality ON training_examples(quality_tier);
 CREATE INDEX idx_training_score ON training_examples(combined_score);
+
+CREATE TABLE IF NOT EXISTS user_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    domain VARCHAR(50) NOT NULL,
+    slots JSONB NOT NULL,
+    beats INTEGER NOT NULL,
+    notes TEXT,
+    code_pattern TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    submitted_by VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_user_template_domain ON user_templates(domain);
+CREATE INDEX idx_user_template_status ON user_templates(status);
+
+CREATE TABLE IF NOT EXISTS fine_tune_candidates (
+    id SERIAL PRIMARY KEY,
+    prompt TEXT NOT NULL,
+    code TEXT NOT NULL,
+    score INTEGER,
+    domain VARCHAR(50),
+    used_in_finetune BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_finetune_score ON fine_tune_candidates(score);
+CREATE INDEX idx_finetune_domain ON fine_tune_candidates(domain);
+
+CREATE TABLE IF NOT EXISTS videos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    render_job_id UUID REFERENCES render_jobs(id) ON DELETE CASCADE,
+    request_id UUID REFERENCES requests(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    original_path VARCHAR(500) NOT NULL,
+    organized_path VARCHAR(500) NOT NULL,
+    file_size_bytes BIGINT,
+    duration_seconds FLOAT,
+    resolution VARCHAR(20),
+    domain VARCHAR(50),
+    prompt TEXT,
+    cdn_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_accessed TIMESTAMP
+);
+CREATE INDEX idx_videos_domain ON videos(domain);
+CREATE INDEX idx_videos_created ON videos(created_at);
+CREATE INDEX idx_videos_render_job ON videos(render_job_id);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255),
+    url VARCHAR(500) NOT NULL,
+    secret VARCHAR(255),
+    events TEXT[] DEFAULT ARRAY['render.complete', 'render.error'],
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webhook_id UUID REFERENCES webhooks(id) ON DELETE CASCADE,
+    job_id VARCHAR(50) NOT NULL,
+    payload JSONB,
+    status VARCHAR(20),
+    attempts INTEGER DEFAULT 0,
+    last_attempt_at TIMESTAMP,
+    response_code INTEGER,
+    response_body TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255),
+    key_hash VARCHAR(64) NOT NULL UNIQUE,
+    key_prefix VARCHAR(8),
+    name VARCHAR(100),
+    rate_limit INTEGER DEFAULT 60,
+    daily_quota INTEGER,
+    requests_today INTEGER DEFAULT 0,
+    last_used_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS api_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    api_key_id UUID REFERENCES api_keys(id),
+    endpoint VARCHAR(100),
+    method VARCHAR(10),
+    status_code INTEGER,
+    response_time_ms INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS lti_platforms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100),
+    issuer VARCHAR(255) UNIQUE NOT NULL,
+    client_id VARCHAR(255),
+    deployment_id VARCHAR(255),
+    auth_endpoint VARCHAR(500),
+    token_endpoint VARCHAR(500),
+    jwks_endpoint VARCHAR(500),
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS batches (
+    id VARCHAR(50) PRIMARY KEY,
+    total_jobs INTEGER DEFAULT 0,
+    completed_jobs INTEGER DEFAULT 0,
+    failed_jobs INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'in_progress',
+    webhook_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_webhook_deliveries_job ON webhook_deliveries(job_id);
+CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);
+CREATE INDEX idx_api_usage_key ON api_usage(api_key_id);
+CREATE INDEX idx_lti_issuer ON lti_platforms(issuer);
