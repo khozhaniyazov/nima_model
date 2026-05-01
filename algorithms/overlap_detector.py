@@ -186,7 +186,7 @@ def _has_removal_between(between: str, var_name: str) -> bool:
         rf"FadeOut\(\s*{re.escape(base_var)}\s*\)",
         rf"self\.remove\(\s*{re.escape(var_name)}\s*\)",
         rf"self\.remove\(\s*{re.escape(base_var)}\s*\)",
-        rf"FadeOut\(\*self\.mobjects\)",
+        r"FadeOut\(\*self\.mobjects\)",
         rf"(?:ReplacementTransform|Transform|FadeTransform|TransformMatching\w*)\(\s*{re.escape(base_var)}\s*,",
         rf"{re.escape(base_var)}\.animate\.[^\n]*set_opacity\(\s*0(?:\.0+)?\s*\)",
         rf"{re.escape(base_var)}\.set_opacity\(\s*0(?:\.0+)?\s*\)",
@@ -615,9 +615,9 @@ def detect_long_construct(code: str) -> List[str]:
 
     if play_count > 25 and not uses_injected_section:
         warnings.append(
-            f"[SECTION_HELPERS_UNUSED] Helpers are injected but not used. "
-            f"For multi-step scenes you MUST wrap steps in start_section()/end_section() "
-            f"and add created objects to the returned `section` group."
+            "[SECTION_HELPERS_UNUSED] Helpers are injected but not used. "
+            "For multi-step scenes you MUST wrap steps in start_section()/end_section() "
+            "and add created objects to the returned `section` group."
         )
         warnings.append(
             f"[COMPLEXITY] construct() has {play_count} self.play() calls without "

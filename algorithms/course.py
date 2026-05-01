@@ -625,11 +625,11 @@ def _question_after(
         f"What would fail first if the invariant behind {topic} stopped holding?",
         f"Which part of the current example proves that {topic} is not just memorized?",
         f"If one assumption changed, which step in {topic} would you inspect first?",
-        f"Can you predict the next state before the method reveals it?",
-        f"What mistake would produce the wrong answer here, and how would you catch it?",
-        f"Which visual cue tells you the method is still on track?",
-        f"How would you explain this checkpoint to someone using one concrete object?",
-        f"Where would this pattern transfer outside the current example?",
+        "Can you predict the next state before the method reveals it?",
+        "What mistake would produce the wrong answer here, and how would you catch it?",
+        "Which visual cue tells you the method is still on track?",
+        "How would you explain this checkpoint to someone using one concrete object?",
+        "Where would this pattern transfer outside the current example?",
     ]
     stem = stems[idx % len(stems)]
     return {

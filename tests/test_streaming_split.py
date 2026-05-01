@@ -2384,7 +2384,7 @@ if __name__ == "__main__":
     test_short_scene_prompt_uses_phone_safe_rag_notes_not_wide_code()
     test_scene_frame_quality_failure_triggers_recovery()
     test_short_scene_non_severe_quality_warning_keeps_creative_scene()
-    test_standard_scene_quality_warning_does_not_kill_rendered_scene()
+    test_standard_scene_quality_warning_requests_recovery_once()
     test_short_plan_upgrade_replaces_static_text_plan_with_motion_beats()
     test_short_scene_prompt_contains_social_motion_contract()
     test_static_short_code_is_rejected_before_render()

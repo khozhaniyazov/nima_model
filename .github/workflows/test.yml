@@ -27,17 +27,28 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
+      - name: Install system deps for manim build
+        # manim depends on manimpango, which is built from source on Linux and
+        # requires pkg-config + pangocairo headers; without these, pip install
+        # of the requirements file fails before pytest even runs.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libpango1.0-dev \
+            libcairo2-dev \
+            ffmpeg
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest
 
       - name: Run pytest
-        # Heavy live-backend reliability harnesses now live under scripts/
-        # (scripts/reliability_streaming.py, scripts/reliability_edge_cases.py)
-        # and are not collected by pytest.
-        run: pytest tests/ -q
+        # Heavy live-backend reliability harnesses live under scripts/ and are
+        # not collected here.
+        run: pytest tests/
 
   lint:
     name: Lint
@@ -52,11 +63,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Install linting tools
+      - name: Install ruff
         run: pip install ruff
 
       - name: Run ruff
-        run: ruff check . --ignore=E501,F401
+        # Config (selected rules, ignores, excluded vendored dirs) lives in
+        # pyproject.toml so local and CI runs stay in sync.
+        run: ruff check .
 
   pipeline-modes:
     name: Pipeline mode smoke
@@ -77,6 +90,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+
+      - name: Install system deps for manim build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libpango1.0-dev \
+            libcairo2-dev \
+            ffmpeg
 
       - name: Install dependencies
         run: |
@@ -106,6 +128,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+
+      - name: Install system deps for manim build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libpango1.0-dev \
+            libcairo2-dev \
+            ffmpeg
 
       - name: Install dependencies
         run: |

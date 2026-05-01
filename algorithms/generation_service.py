@@ -283,10 +283,10 @@ def generate_and_validate_code_job(
                 extra=cache_extra,
             )
             if cached_result:
-                print(f"[CACHE] Prompt cache HIT — skipping AI generation")
+                print("[CACHE] Prompt cache HIT — skipping AI generation")
                 code = cached_result.get("code", "")
                 attempts_log.extend(cached_result.get("attempts_log", []))
-                print(f"[TIMING] LLM generation: 0.00s (cache hit)")
+                print("[TIMING] LLM generation: 0.00s (cache hit)")
             else:
                 code = generate_manim_code(
                     prompt,
@@ -342,8 +342,6 @@ def generate_and_validate_code_job(
                 latex_valid, latex_issues = validate_latex_strings(code)
                 if not latex_valid:
                     has_critical_errors = True
-
-        force_review = has_critical_errors
 
         # In FAST/DRAFT_PIPELINE, skip review entirely unless there are critical errors
         if is_fast:

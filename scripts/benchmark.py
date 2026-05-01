@@ -83,14 +83,14 @@ def benchmark_rag_caching():
 
     retrieve_patterns.cache_clear()
 
-    # First call (cold)
+    # First call (cold) — discard the result; we only care about wall time.
     start = time.perf_counter()
-    result1 = retrieve_patterns("math", "derivative", ("tangent", "secant"), limit=3)
+    retrieve_patterns("math", "derivative", ("tangent", "secant"), limit=3)
     cold_time = time.perf_counter() - start
 
-    # Second call (cached)
+    # Second call (cached) — same query so the lru_cache should hit.
     start = time.perf_counter()
-    result2 = retrieve_patterns("math", "derivative", ("tangent", "secant"), limit=3)
+    retrieve_patterns("math", "derivative", ("tangent", "secant"), limit=3)
     hot_time = time.perf_counter() - start
 
     return {
@@ -291,7 +291,7 @@ def run_full_benchmark():
     # Print summary
     print_summary(report)
 
-    print(f"\n[Benchmark complete. Results saved to benchmark_results.json]")
+    print("\n[Benchmark complete. Results saved to benchmark_results.json]")
 
     return report
 

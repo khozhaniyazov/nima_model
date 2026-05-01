@@ -91,7 +91,7 @@ def _llm_text_with_retry(prompt_messages, model: str, max_retries: int = 3) -> s
             # Check for 524 error - try fallback model
             if "524" in error_str or "bad_response_status_code" in error_str:
                 if not used_fallback:
-                    print(f"[LLM] Primary model failed with 524, trying fallback...")
+                    print("[LLM] Primary model failed with 524, trying fallback...")
                     try:
                         # Try with fallback client
                         response = fallback_client.chat.completions.create(
@@ -650,12 +650,12 @@ RULE 10 — NO SELF.CLEAR(): Replace every self.clear() call with:
 
 RULE 12 — NO MATH INDEXING: Do not use MathTex indexing like eq[0][k] or eq[k].
   Token positions are UNSTABLE and will cause IndexError at render time.
-  
+
   WRONG (will crash):
     eq = MathTex(r"log_{3}(x)=2")
     eq[0][4].set_color(YELLOW)  # CRASH RISK
     ReplacementTransform(eq[0][6].copy(), ...)  # CRASH RISK
-  
+
   RIGHT (stable):
     eq = MathTex(r"log_{3}(x)=2")
     eq.set_color_by_tex("3", YELLOW)  # Safe

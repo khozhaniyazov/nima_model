@@ -1,15 +1,33 @@
-"""Quick import and wiring verification — run with: python test_imports.py"""
+"""Quick import and wiring verification.
+
+Runs both as a pytest module (via tests/conftest.py) and as a script
+(``python tests/test_imports.py``); we therefore add the repo root to
+``sys.path`` ourselves so the standalone invocation works without conftest.
+"""
 import os
 import re
-os.environ["OPENAI_API_KEY"] = "test-key"
-os.environ["USE_DATABASE"] = "false"
-os.environ["GENERATION_MODEL"] = "gpt-5.4"
-os.environ["FAST_MODEL"] = "gpt-5.4"
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+os.environ.setdefault("OPENAI_API_KEY", "test-key")
+os.environ.setdefault("USE_DATABASE", "false")
 
 # ── config ────────────────────────────────────────────────────────────────────
 import config
-assert config.GENERATION_MODEL == os.environ["GENERATION_MODEL"], "Wrong model"
-assert config.FAST_MODEL == os.environ["FAST_MODEL"], "Wrong fast model"
+# `config` may have been imported by an earlier test in the same pytest session,
+# so we just sanity-check that the env-driven attributes exist and are strings,
+# rather than asserting a specific model name (the default in config.py changes
+# as we evaluate new providers).
+assert isinstance(config.GENERATION_MODEL, str) and config.GENERATION_MODEL, (
+    f"GENERATION_MODEL not configured: {config.GENERATION_MODEL!r}"
+)
+assert isinstance(config.FAST_MODEL, str) and config.FAST_MODEL, (
+    f"FAST_MODEL not configured: {config.FAST_MODEL!r}"
+)
 print(f"[OK] config — GENERATION_MODEL={config.GENERATION_MODEL}, FAST_MODEL={config.FAST_MODEL}")
 
 # ── error_parser ──────────────────────────────────────────────────────────────
@@ -71,7 +89,7 @@ print(f"[OK] code_digest — structure valid={ok_struct}")
 # Safety check — SAFE code
 is_safe, issues = validate_names_and_imports(test_code)
 assert is_safe, f"False positive safety flag: {issues}"
-print(f"[OK] code_digest — safe code correctly passes AST check")
+print("[OK] code_digest — safe code correctly passes AST check")
 
 # Safety check — DANGEROUS code (os.system)
 bad_code = "import os\nfrom manim import *\nclass GeneratedScene(Scene):\n    def construct(self):\n        os.system('rm -rf /')\n        self.wait(1)\n"
