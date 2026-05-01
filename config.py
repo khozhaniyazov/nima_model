@@ -122,8 +122,11 @@ STREAM_PROVIDER_USE_SUBPROCESS = (
 )
 
 # Request analysis knobs (used by algorithms.request_analysis)
+# Falls back to min(OPENAI_TIMEOUT, 60) but uses (OPENAI_TIMEOUT or 60) so an
+# operator who sets OPENAI_TIMEOUT=0 doesn't accidentally clamp planning to 10s.
 REQUEST_ANALYSIS_TIMEOUT = max(
-    10, int(os.getenv("REQUEST_ANALYSIS_TIMEOUT", str(min(OPENAI_TIMEOUT, 60))))
+    10,
+    int(os.getenv("REQUEST_ANALYSIS_TIMEOUT", str(min(OPENAI_TIMEOUT or 60, 60)))),
 )
 REQUEST_ANALYSIS_USE_SUBPROCESS = (
     os.getenv("REQUEST_ANALYSIS_USE_SUBPROCESS", "true").lower() == "true"

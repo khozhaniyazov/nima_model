@@ -77,6 +77,20 @@ def test_request_analysis_timeout_is_int(monkeypatch):
     assert cfg.REQUEST_ANALYSIS_TIMEOUT == 42
 
 
+def test_request_analysis_timeout_handles_zero_openai_timeout(monkeypatch):
+    """OPENAI_TIMEOUT=0 should not clamp planning timeout to floor (10s).
+
+    The fallback expression is `min(OPENAI_TIMEOUT or 60, 60)`; the `or 60`
+    guards against the degenerate `OPENAI_TIMEOUT=0` case, which would
+    otherwise produce a 10s planning timeout via `max(10, 0)`.
+    """
+    cfg = _reload_config(
+        monkeypatch,
+        {"USE_DATABASE": "false", "OPENAI_TIMEOUT": "0"},
+    )
+    assert cfg.REQUEST_ANALYSIS_TIMEOUT == 60
+
+
 def test_edge_tts_voice_env_override(monkeypatch):
     cfg = _reload_config(
         monkeypatch,
