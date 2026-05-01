@@ -1,93 +1,145 @@
-# NIMA – Request-to-animation model
+# NIMA — Manim AI Generator
 
-NIMA is a Flask-based system that generates Manim CE animations from natural-language prompts. It includes a retrieval-augmented generation pipeline, code validation, database logging, and automated rendering.
+NIMA turns a natural-language prompt into a rendered [Manim CE](https://www.manim.community/) animation. It exposes a Flask API plus a Next.js frontend, runs an LLM-driven generation pipeline (analyze → plan → generate → review → render), self-heals render errors, and supports streaming scene-by-scene generation with optional TTS voiceover.
 
-## Features
+> Backend: Python 3.11 + Flask · Frontend: Next.js (in `nima-frontend/`) · LLM: OpenAI-compatible · TTS: edge-tts (free)
 
-- Converts user prompts into Manim CE v0.18.0 scenes.
-- Supports algebra, geometry, calculus, and other mathematical domains.
-- Multi-step pipeline: request analysis, planning, generation, refinement, and polishing.
-- Python and Manim syntax validation.
-- Ensures valid Scene classes; detects errors, warnings, and overlapping elements.
-- RAG retrieval of golden examples and domain-specific guidance.
-- Database logging (PostgreSQL) with optional enable/disable.
-- Uses OpenAI API for reasoning and iterative code improvement.
-- Automated rendering pipeline with outputs: video, code, logs, and metadata.
+## Project layout
 
-## Project Structure
-
-project/
-│
-├── app.py                     # Flask server
-├── algorithms/                # Core logic
-│   ├── request_utils.py       # Prompt analysis and planning
-│   ├── generation.py          # Code generation and refinement
-│   ├── validation.py          # Syntax and quality checks
-│   └── ...                    # Other algorithm helpers
-│
-├── database/
-│   ├── database.py            # Database connection and helpers
-│   └── schema.sql             # PostgreSQL schema
-│
-├── static/                    # Front-end assets (CSS, JS)
-├── templates/                 # HTML templates for Flask
-├── outputs/                   # Generated videos, logs, and code
-└── README.md                  # Project documentation
-
+```
+.
+├── app.py                  # Thin Flask bootstrap (factory + blueprints)
+├── config.py               # Single source of truth for env-driven config
+├── algorithms/             # Pipeline core
+│   ├── generation_service  # analyze → plan → generate → review
+│   ├── render_service      # save + manim render + self-heal
+│   ├── stream_service      # scene-by-scene streaming pipeline (Phase 13)
+│   ├── webhook_service     # webhook delivery (with retries)
+│   ├── job_dispatcher      # background worker pool
+│   ├── job_state           # in-memory + persistent job state
+│   ├── job_submission      # request validation + intake
+│   ├── batch_completion    # batch lifecycle hooks
+│   ├── rate_limiter        # sliding-window per-client limits
+│   ├── manim_warmup        # pre-warm planes/templates at boot
+│   ├── media_tools         # ffmpeg/manim CLI helpers
+│   ├── rendering           # output discovery + paths
+│   ├── video_modes         # DRAFT/FAST/FULL/SHORT/COURSE/LECTURE
+│   ├── video_quality       # quality scoring
+│   ├── vision_adapters     # image/video probing
+│   ├── streaming           # streaming planner + scene templates
+│   ├── tts                 # edge-tts wrapper + audio mux
+│   ├── overlap_detector    # static layout / scene-hygiene checks
+│   ├── ai_functions        # OpenAI tool / function-call wrappers
+│   ├── code_digest         # code summarization for prompts
+│   ├── request_analysis    # prompt intent + plan extraction
+│   ├── error_parser        # parse manim/python error output
+│   ├── template_registry   # Manim scene templates
+│   └── database            # ManimDatabase adapter (psycopg2)
+├── api_routes/             # Flask blueprints
+│   ├── core, batches, media, templates, webhooks
+│   ├── api_keys, lti, payload
+├── RAG/                    # Retrieval-augmented examples + fine-tuning
+├── tests/                  # pytest suite (with conftest.py)
+├── scripts/                # benchmark, streaming sweeps, dev helpers
+├── docs/                   # design docs, big-picture roadmap
+├── .planning/              # phase plans (01-foundation-stability ... 13-streaming)
+├── nima-frontend/          # Next.js dashboard / library / generator UI
+├── skills/                 # agentic skill bundles (changelog, MCP, etc.)
+├── templates/              # legacy server-rendered templates
+├── outputs/, media/, .tmp/ # runtime artifacts (gitignored)
+└── database_schema.sql     # PostgreSQL schema
+```
 
 ## Requirements
 
-flask  
-openai  
-python-dotenv  
-psycopg2-binary  
-manimce  
+- Python 3.11+
+- Manim CE (with a working LaTeX install for math rendering)
+- ffmpeg
+- Optional: PostgreSQL for run logging, an OpenAI-compatible API key
 
-Install dependencies:
+```bash
 pip install -r requirements.txt
+```
 
-## Environment Variables
+## Configuration
 
-Create a `.env` file with:
+Create a `.env` in the project root:
 
-OPENAI_API_KEY=your_api_key  
-DB_CONNECTION_STRING=postgresql://user:password@host:port/dbname  
-USE_DATABASE=true  
+```
+OPENAI_API_KEY=sk-...
+DB_CONNECTION_STRING=postgresql://user:pass@host:5432/nima
+USE_DATABASE=true            # set false to disable Postgres logging
 
-Set `USE_DATABASE=false` to disable database usage.
+# Pipeline
+DRAFT_PIPELINE=false         # fastest, lowest quality
+FAST_PIPELINE=false          # single-pass, deterministic for math
+MAX_GENERATION_ATTEMPTS=3
+MAX_RENDER_RETRIES=3
 
-## Running the Application
+# Streaming + TTS
+ENABLE_VOICEOVER=true
+TTS_VOICE=en-US-AndrewNeural
 
-Start the Flask development server:
+# Throughput
+BACKGROUND_MAX_WORKERS=4
+WEBHOOK_MAX_WORKERS=2
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=20
+RATE_LIMIT_WINDOW=60
+```
 
+`config.py` is the only module that reads `os.environ`; everywhere else imports from `config`.
+
+## Running
+
+Backend:
+
+```bash
 python app.py
+# http://localhost:5000  (stats: /stats)
+```
 
-The app runs at:
+Frontend:
 
-http://127.0.0.1:5000
+```bash
+cd nima-frontend
+npm install
+npm run dev
+# http://localhost:3000
+```
 
-## Workflow Overview
+## Testing
 
-1. User submits a prompt.  
-2. NIMA analyzes the request and generates an animation plan.  
-3. RAG retrieves relevant examples and guidance.  
-4. Manim code is generated.  
-5. Code is validated and improved.  
-6. Rendering is executed via Manim.  
-7. Outputs (video, code, logs) are returned.
+```bash
+pip install pytest
+pytest tests/ -q
+```
 
-## Extending the Dataset
+CI runs `tests/` (excluding the network-heavy reliability + edge-case stress
+suites) plus `ruff check .` on every push / PR. Heavy suites can be triggered
+manually:
 
-- Add more examples to improve RAG retrieval.  
-- Extend domains like physics, linear algebra, statistics.  
-- Add structured explanations to guide generation.
+```bash
+python scripts/benchmark.py
+python scripts/run_streaming_3_tts.py
+python scripts/video_mode_sweep.py
+```
+
+## Pipeline overview
+
+1. **Analyze** the prompt (`algorithms/request_analysis`) to detect intent, domain, and pace.
+2. **Plan** scenes / beats — deterministic templates for math, LLM-driven otherwise.
+3. **Generate** Manim code (`algorithms/generation_service`) with RAG-retrieved examples.
+4. **Review** for layout, API misuse, pacing (`algorithms/overlap_detector`, etc.).
+5. **Render** via `manim` (`algorithms/render_service`); on failure, feed stderr back to the model and retry up to `MAX_RENDER_RETRIES`.
+6. **Stream mode** (Phase 13) renders scene by scene, mixes per-scene TTS, and stitches the final video.
+
+Outputs land in `outputs/`; intermediate Manim media in `media/`. Both are gitignored.
 
 ## Notes
 
-- Requires Manim CE installed locally.  
-- Development server only; use a proper WSGI server for production.
+- Manim CE must be installed locally; rendering is shelled out via `manim` CLI.
+- Use a real WSGI server (gunicorn / waitress) in production — `app.py` runs the dev server.
+- See `docs/BIGGER-PICTURE.md` and `.planning/phases/` for roadmap and phase plans.
 
-
-**Example:**
-
-![Narrated demonstration](./example.mp4)
+**Example output:** ![Narrated demonstration](./example.mp4)
