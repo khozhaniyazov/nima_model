@@ -284,6 +284,54 @@ def test_stream_generate_uses_non_streaming_directly_for_single_provider(monkeyp
     print("[OK] streaming providers - single provider uses direct non-streaming")
 
 
+def test_stream_generate_drops_max_tokens_on_unsupported_parameter_error(monkeypatch):
+    """Provider rejects max_tokens with HTTP 400 → retry once without it.
+
+    Reproduces a real failure with a third-party gpt-5.x relay that returns
+    `{"error": {"message": "Unsupported parameter: max_output_tokens", ...}}`.
+    The wrapper should swallow the error, drop max_tokens, and retry.
+    """
+    fake_code = "from manim import *\nclass GeneratedScene(Scene):\n    def construct(self):\n        pass\n"
+    create_calls = []
+
+    class FakeBadRequest(Exception):
+        """Stand-in for openai.BadRequestError."""
+
+    class FakeOpenAI:
+        def __init__(self, api_key=None, base_url=None, timeout=None):
+            self.base_url = base_url
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=self._create)
+            )
+
+        def _create(self, **kwargs):
+            create_calls.append(dict(kwargs))
+            if "max_tokens" in kwargs:
+                raise FakeBadRequest(
+                    "Error code: 400 - {'error': {'message': "
+                    "'Unsupported parameter: max_output_tokens', "
+                    "'type': 'invalid_request_error'}}"
+                )
+            return _FakeLLMResponse(fake_code)
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+    monkeypatch.setattr(streaming, "STREAM_PROVIDER_USE_SUBPROCESS", False)
+    monkeypatch.setattr(streaming, "STREAM_PROVIDER", "zjuapi")
+    streaming._PROVIDER_COOLDOWNS.clear()
+    monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "api_key", "key")
+    monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "base_url", "zju")
+
+    context = streaming.NarrativeContext(prompt="demo", domain="math")
+    generated = "".join(streaming.stream_generate("make code", context))
+
+    assert "class GeneratedScene" in generated
+    # Two calls expected: first with max_tokens (rejected), second without.
+    assert len(create_calls) == 2
+    assert "max_tokens" in create_calls[0]
+    assert "max_tokens" not in create_calls[1]
+    print("[OK] streaming providers - drops max_tokens on Unsupported parameter 400")
+
+
 def test_sanitize_generated_code_removes_literal_text_prefixes():
     code = """from manim import *
 

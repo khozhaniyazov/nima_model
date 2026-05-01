@@ -1226,6 +1226,44 @@ def _provider_max_tokens(context: NarrativeContext, *, stream: bool) -> int:
     return 2600 if stream else 3400
 
 
+# Some upstream proxies (e.g. third-party gpt-5.x relays) reject the legacy
+# `max_tokens` field — and the openai SDK 2.x silently rewrites it to either
+# `max_completion_tokens` (chat) or `max_output_tokens` (responses) depending
+# on the detected model family. When that rewritten field comes back as a 400
+# "Unsupported parameter", we retry once without any token cap.
+_MAX_TOKEN_PARAM_HINTS = (
+    "max_tokens",
+    "max_completion_tokens",
+    "max_output_tokens",
+)
+
+
+def _is_max_tokens_unsupported_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    if "unsupported parameter" not in msg and "unrecognized" not in msg:
+        return False
+    return any(hint in msg for hint in _MAX_TOKEN_PARAM_HINTS)
+
+
+def _create_chat_completion(client, *, stream: bool, **kwargs):
+    """Call chat.completions.create with a retry that drops max_tokens.
+
+    Returns the response object as-is. Raises whatever the SDK raises when
+    the retry path is not applicable.
+    """
+    try:
+        return client.chat.completions.create(stream=stream, **kwargs)
+    except Exception as exc:
+        if "max_tokens" in kwargs and _is_max_tokens_unsupported_error(exc):
+            kwargs.pop("max_tokens", None)
+            print(
+                "[STREAM] Provider rejected max_tokens parameter; "
+                "retrying without a token cap"
+            )
+            return client.chat.completions.create(stream=stream, **kwargs)
+        raise
+
+
 def _partial_scene_content_is_usable(content: str) -> bool:
     lowered = (content or "").lower()
     return (
@@ -1273,7 +1311,8 @@ def _generate_with_provider_in_process(
 
         messages = _build_llm_messages(prompt, context)
 
-        response = client.chat.completions.create(
+        response = _create_chat_completion(
+            client,
             model=cfg["model"],
             messages=messages,
             stream=stream,
@@ -1339,7 +1378,30 @@ client = OpenAI(
     timeout=payload.get("timeout") or 60,
 )
 
-response = client.chat.completions.create(
+_MAX_TOKEN_HINTS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
+
+
+def _is_max_tokens_unsupported(exc):
+    msg = str(exc).lower()
+    if "unsupported parameter" not in msg and "unrecognized" not in msg:
+        return False
+    return any(h in msg for h in _MAX_TOKEN_HINTS)
+
+
+def _create(**kwargs):
+    try:
+        return client.chat.completions.create(**kwargs)
+    except Exception as exc:
+        if "max_tokens" in kwargs and _is_max_tokens_unsupported(exc):
+            kwargs.pop("max_tokens", None)
+            sys.stderr.write(
+                "[STREAM] child: provider rejected max_tokens; retrying without it\n"
+            )
+            return client.chat.completions.create(**kwargs)
+        raise
+
+
+response = _create(
     model=payload["model"],
     messages=payload["messages"],
     stream=payload["stream"],
