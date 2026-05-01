@@ -34,12 +34,10 @@ jobs:
           pip install pytest pytest-cov
 
       - name: Run pytest
-        # Heavy/external suites are excluded; they run from scripts/ on demand.
-        run: |
-          pytest tests/ \
-            --ignore=tests/test_streaming_reliability.py \
-            --ignore=tests/test_edge_cases.py \
-            -q
+        # Heavy live-backend reliability harnesses now live under scripts/
+        # (scripts/reliability_streaming.py, scripts/reliability_edge_cases.py)
+        # and are not collected by pytest.
+        run: pytest tests/ -q
 
   lint:
     name: Lint
