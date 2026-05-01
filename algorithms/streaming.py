@@ -1773,10 +1773,12 @@ def generate_scene(
             last_error = e
             print(f"[STREAM] Scene {scene_num} attempt {attempt} failed: {e}")
             error_text = str(e).lower()
-            if context.domain_state.get("video_mode") == "standard" and (
+            mode = context.domain_state.get("video_mode")
+            provider_failure = (
                 "generation exceeded" in error_text
                 or "empty or very short response" in error_text
-            ):
+            )
+            if mode == "standard" and provider_failure:
                 code = _make_standard_fallback_scene_code(scene_plan, context)
                 _mark_scene_generation(scene_plan, "deterministic_standard_fallback", e)
                 context = _update_context_from_scene(context, code, scene_desc)
@@ -1785,10 +1787,7 @@ def generate_scene(
                     f"after provider failure: {e}"
                 )
                 return code, context
-            if context.domain_state.get("video_mode") == "lecture" and (
-                "generation exceeded" in error_text
-                or "empty or very short response" in error_text
-            ):
+            if mode == "lecture" and provider_failure:
                 code = _make_lecture_fallback_scene_code(scene_plan, context)
                 _mark_scene_generation(scene_plan, "deterministic_lecture_fallback", e)
                 context = _update_context_from_scene(context, code, scene_desc)
@@ -1797,10 +1796,7 @@ def generate_scene(
                     f"after provider failure: {e}"
                 )
                 return code, context
-            if context.domain_state.get("video_mode") == "course" and (
-                "generation exceeded" in error_text
-                or "empty or very short response" in error_text
-            ):
+            if mode == "course" and provider_failure:
                 code = _make_course_fallback_scene_code(scene_plan, context)
                 _mark_scene_generation(scene_plan, "deterministic_course_fallback", e)
                 context = _update_context_from_scene(context, code, scene_desc)
@@ -1809,13 +1805,27 @@ def generate_scene(
                     f"after provider failure: {e}"
                 )
                 return code, context
+            if mode == "short" and provider_failure:
+                code = _make_short_fallback_scene_code(scene_plan, context)
+                _mark_scene_generation(scene_plan, "deterministic_short_fallback", e)
+                context = _update_context_from_scene(context, code, scene_desc)
+                print(
+                    f"[STREAM] Scene {scene_num} using deterministic short fallback "
+                    f"after provider failure: {e}"
+                )
+                return code, context
 
             # Add error feedback to context for retry
             if attempt < max_retries:
                 context.scene_history.append(f"[RETRY] {scene_desc}: {str(e)[:100]}")
 
-    # All retries failed
-    if context.domain_state.get("video_mode") == "standard":
+    # All retries failed — fall back to a deterministic scene where one is
+    # available for this mode. Short mode previously had no per-scene fallback,
+    # which meant a single failing scene aborted the whole short video; the
+    # job-level short-fallback retry that re-renders every scene is far more
+    # expensive than just dropping a deterministic last-resort scene here.
+    mode = context.domain_state.get("video_mode")
+    if mode == "standard":
         code = _make_standard_fallback_scene_code(scene_plan, context)
         _mark_scene_generation(scene_plan, "deterministic_standard_fallback", last_error)
         context = _update_context_from_scene(context, code, scene_desc)
@@ -1825,7 +1835,7 @@ def generate_scene(
         )
         return code, context
 
-    if context.domain_state.get("video_mode") == "lecture":
+    if mode == "lecture":
         code = _make_lecture_fallback_scene_code(scene_plan, context)
         _mark_scene_generation(scene_plan, "deterministic_lecture_fallback", last_error)
         context = _update_context_from_scene(context, code, scene_desc)
@@ -1835,12 +1845,22 @@ def generate_scene(
         )
         return code, context
 
-    if context.domain_state.get("video_mode") == "course":
+    if mode == "course":
         code = _make_course_fallback_scene_code(scene_plan, context)
         _mark_scene_generation(scene_plan, "deterministic_course_fallback", last_error)
         context = _update_context_from_scene(context, code, scene_desc)
         print(
             f"[STREAM] Scene {scene_num} using deterministic course fallback "
+            f"after generation failure: {last_error}"
+        )
+        return code, context
+
+    if mode == "short":
+        code = _make_short_fallback_scene_code(scene_plan, context)
+        _mark_scene_generation(scene_plan, "deterministic_short_fallback", last_error)
+        context = _update_context_from_scene(context, code, scene_desc)
+        print(
+            f"[STREAM] Scene {scene_num} using deterministic short fallback "
             f"after generation failure: {last_error}"
         )
         return code, context

@@ -1861,6 +1861,88 @@ def test_standard_deterministic_fallback_is_valid_manim_code():
     print("[OK] streaming fallback - standard deterministic variants are valid")
 
 
+def test_short_generation_timeout_uses_deterministic_short_fallback(monkeypatch):
+    """When short-mode scene generation times out, scene-level fallback must engage.
+
+    Regression test for the 'one bad scene aborts the whole short' case the
+    previous live-render smoke surfaced — short used to skip straight to
+    raise RuntimeError when no LLM-driven scene came back.
+    """
+    context = streaming.NarrativeContext.from_analysis(
+        "Animate a blue circle morphing into a green square.",
+        {"domain": "general", "video_mode": "short", "aspect": "9:16"},
+    )
+    context.domain_state["video_mode"] = "short"
+    context.scene_index = 3
+
+    def fake_stream_generate(_prompt, _context):
+        raise TimeoutError("openai generation exceeded 90s")
+
+    monkeypatch.setattr(streaming, "stream_generate", fake_stream_generate)
+    scene_plan = {
+        "title": "Short timeout fallback",
+        "description": "Ghost morph beat",
+        "duration_hint": 12,
+    }
+    code, updated = streaming.generate_scene(scene_plan, context, 3, max_retries=2)
+
+    assert "class GeneratedScene" in code
+    assert scene_plan["_generation_source"] == "deterministic_short_fallback"
+    assert "generation exceeded" in scene_plan["_generation_error"]
+    assert updated.scene_history
+    compile(code, "<short_fallback_after_timeout>", "exec")
+    print("[OK] streaming fallback - short timeout uses deterministic scene")
+
+
+def test_short_retry_exhaustion_falls_back_to_short_deterministic(monkeypatch):
+    """Even when failures aren't provider-shaped (e.g. layout-hygiene retries),
+    short mode must still produce a deterministic scene rather than aborting.
+
+    This is the exact failure mode observed in the post-PR-#5 live smoke
+    where scene 4 burned both attempts on '[OVERLAP] ghost_circle ... '
+    and the whole 5-scene job failed.
+    """
+    context = streaming.NarrativeContext.from_analysis(
+        "Animate a blue circle morphing into a green square.",
+        {"domain": "general", "video_mode": "short", "aspect": "9:16"},
+    )
+    context.domain_state["video_mode"] = "short"
+
+    bad_code = (
+        "from manim import *\n\n"
+        "class GeneratedScene(Scene):\n"
+        "    def construct(self):\n"
+        "        self.add(Text('hi'))\n"
+    )
+
+    def fake_stream_generate(_prompt, _context):
+        # Yield enough chars to satisfy any minimum-length check.
+        yield bad_code + " " * 1500
+
+    monkeypatch.setattr(streaming, "stream_generate", fake_stream_generate)
+
+    def always_layout_hygiene(_code, _scene_plan, _context):
+        # Simulates the same-class error from the live smoke: the AST guard
+        # rejects every regenerated scene because the prompt isn't surgical
+        # enough to break the "ghost-shape edge:UP" pattern.
+        return (
+            "Static layout hygiene risk detected before render: "
+            "[OVERLAP] Line 25 (ghost_circle) and line 26 (ghost_square) "
+            "both placed at edge:UP with no FadeOut of ghost_circle between them."
+        )
+
+    monkeypatch.setattr(streaming, "_reject_layout_hygiene_code", always_layout_hygiene)
+
+    scene_plan = {"title": "Ghost morph", "description": "Final beat", "duration_hint": 12}
+    code, _updated = streaming.generate_scene(scene_plan, context, 4, max_retries=2)
+
+    assert scene_plan["_generation_source"] == "deterministic_short_fallback"
+    # A real scene fallback will not include the layout-failed bad code.
+    assert "ghost_circle" not in code
+    compile(code, "<short_fallback_after_layout>", "exec")
+    print("[OK] streaming fallback - short retry exhaustion uses deterministic scene")
+
+
 def test_standard_generation_timeout_uses_deterministic_fallback(monkeypatch):
     context = streaming.NarrativeContext.from_analysis(
         "Make a standard explainer about binary search",
