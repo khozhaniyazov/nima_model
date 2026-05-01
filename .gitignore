@@ -1,22 +1,55 @@
+# --- Python ---
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.egg-info/
+build/
+dist/
 
+# --- Environments ---
 env/
 venv/
+.venv/
 *.env
+.env
+.env.*
+!.env.example
 
+# --- Editors / Tooling caches ---
 .vscode/
 .idea/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
+# --- Runtime / generated artifacts ---
 outputs/
 media/
+.tmp/
 *.log
+*.pid
+latest_code.py
+benchmark_results.json
 
+# --- Databases ---
 *.sqlite
 *.db
-.env
 
+# --- OS ---
 .DS_Store
 Thumbs.db
+nul
+
+# --- Frontend (Next.js / Node) ---
+nima-frontend/node_modules/
+nima-frontend/.next/
+nima-frontend/out/
+nima-frontend/dist/
+nima-frontend/.turbo/
+nima-frontend/npm-debug.log*
+nima-frontend/yarn-debug.log*
+nima-frontend/yarn-error.log*
+
+# --- Misc working notes ---
+.planning/notes/scratch/
