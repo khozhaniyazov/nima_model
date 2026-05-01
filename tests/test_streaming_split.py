@@ -1861,12 +1861,14 @@ def test_standard_deterministic_fallback_is_valid_manim_code():
     print("[OK] streaming fallback - standard deterministic variants are valid")
 
 
-def test_short_generation_timeout_uses_deterministic_short_fallback(monkeypatch):
-    """When short-mode scene generation times out, scene-level fallback must engage.
+def test_short_provider_timeout_uses_deterministic_short_fallback(monkeypatch):
+    """Provider-failure (timeout/empty) early-exit branch engages on short mode.
 
-    Regression test for the 'one bad scene aborts the whole short' case the
-    previous live-render smoke surfaced — short used to skip straight to
-    raise RuntimeError when no LLM-driven scene came back.
+    The error string 'generation exceeded' matches the in-loop provider_failure
+    short-circuit, so this test covers the in-loop early-exit branch (attempt 1
+    falls through immediately), not the post-loop retry-exhaust block. The
+    retry-exhaust block is covered by
+    test_short_retry_exhaustion_falls_back_to_short_deterministic below.
     """
     context = streaming.NarrativeContext.from_analysis(
         "Animate a blue circle morphing into a green square.",
