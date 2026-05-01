@@ -27,10 +27,15 @@ MANIM_SCRIPTS.mkdir(parents=True, exist_ok=True)
 OUTPUTS.mkdir(parents=True, exist_ok=True)
 
 # ── Database ─────────────────────────────────────────────────────────────────
-DB_CONNECTION_STRING = os.environ.get(
-    "DB_CONNECTION_STRING", "postgresql://postgres:Zk201910902!@localhost:5432/manim_db"
-)
+# No default credentials baked in: if USE_DATABASE=true you must supply a real
+# DB_CONNECTION_STRING via .env (see .env.example).
+DB_CONNECTION_STRING = os.environ.get("DB_CONNECTION_STRING", "")
 USE_DATABASE = os.environ.get("USE_DATABASE", "true").lower() == "true"
+if USE_DATABASE and not DB_CONNECTION_STRING:
+    raise RuntimeError(
+        "USE_DATABASE=true but DB_CONNECTION_STRING is not set. "
+        "Set it in .env (see .env.example) or set USE_DATABASE=false."
+    )
 
 # ── Render pipeline ───────────────────────────────────────────────────────────
 MAX_GENERATION_ATTEMPTS = 2  # AI generation retries

@@ -1162,7 +1162,7 @@ APPROACH: [1 sentence: main teaching approach]
             )
 
             if not result:
-                raise ValueError("Empty analysis response")
+                raise ValueError("Empty analysis response") from None
 
             for line in result.split("\n"):
                 line = line.strip()
@@ -1817,7 +1817,17 @@ def expand_short_prompt(prompt: str) -> str:
             )
 
         if extension:
-            prompt = prompt.rstrip("…").rstrip("...") + extension
+            # Strip a trailing ellipsis (either Unicode "…" or ASCII "...")
+            # before appending. The original code chained rstrip("…").rstrip("...")
+            # but rstrip with a multi-char string strips any trailing combination
+            # of those chars (B005), which is misleading. Match the original's
+            # whitespace handling — i.e., do NOT eat trailing spaces — so the
+            # appended extension joins with whatever spacing the prompt had.
+            if prompt.endswith("…"):
+                prompt = prompt[:-1]
+            elif prompt.endswith("..."):
+                prompt = prompt[:-3]
+            prompt = prompt + extension
 
     if prompt != original:
         print(f"[EXPAND] Expanded prompt: '{original}' -> '{prompt}'")

@@ -685,7 +685,7 @@ def split_plan_into_scenes(plan_data: dict, max_scenes: int = 20) -> List[dict]:
         # Group beats into scenes (every 2-4 beats = 1 scene)
         beats = _coerce_plan_items(plan_data["beats"])
         scene_beats = []
-        for i, beat in enumerate(beats):
+        for beat in beats:
             scene_beats.append(beat)
             # Split every 3 beats or on major transition markers
             if len(scene_beats) >= 3 or beat.get("is_transition"):
@@ -5648,8 +5648,8 @@ def stitch_scenes(scene_videos: List[str], output: str, fps: int = 30) -> str:
 
         print(f"[STITCH] Created {output} from {len(scene_videos)} scenes")
 
-    except FileNotFoundError:
-        raise RuntimeError("ffmpeg not found — install ffmpeg to use scene stitching")
+    except FileNotFoundError as err:
+        raise RuntimeError("ffmpeg not found — install ffmpeg to use scene stitching") from err
     finally:
         for normalized_path in normalized_paths:
             path = Path(normalized_path)
