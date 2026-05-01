@@ -1,4 +1,4 @@
-name: Tests and Benchmark
+name: Tests and Lint
 
 on:
   push:
@@ -7,120 +7,119 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  PYTHON_VERSION: '3.11'
+
 jobs:
   test:
-    name: Run Tests
+    name: Pytest
     runs-on: ubuntu-latest
-    
+    env:
+      USE_DATABASE: 'false'
+      OPENAI_API_KEY: 'test'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Run import tests
-        run: python test_imports.py
-      
-      - name: Run optimization tests
-        run: python test_optimizations.py
-      
+          pip install pytest pytest-cov
+
+      - name: Run pytest
+        # Heavy/external suites are excluded; they run from scripts/ on demand.
+        run: |
+          pytest tests/ \
+            --ignore=tests/test_streaming_reliability.py \
+            --ignore=tests/test_edge_cases.py \
+            -q
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install linting tools
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check . --ignore=E501,F401
+
+  pipeline-modes:
+    name: Pipeline mode smoke
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [DRAFT, FAST, FULL]
+    env:
+      USE_DATABASE: 'false'
+      OPENAI_API_KEY: 'test'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify config loads in ${{ matrix.mode }} mode
+        env:
+          DRAFT_PIPELINE: ${{ matrix.mode == 'DRAFT' }}
+          FAST_PIPELINE: ${{ matrix.mode == 'FAST' }}
+        run: |
+          python -c "import config; print(f'DRAFT={config.DRAFT_PIPELINE}, FAST={config.FAST_PIPELINE}')"
+
+  benchmark:
+    name: Benchmark (manual)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      USE_DATABASE: 'false'
+      OPENAI_API_KEY: 'test'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
       - name: Run benchmark
-        run: python benchmark.py
-      
+        run: python scripts/benchmark.py
+
       - name: Upload benchmark results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: benchmark_results.json
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install linting tools
-        run: |
-          pip install ruff black mypy
-      
-      - name: Run ruff
-        run: ruff check . --ignore=E501,F401
-      
-      - name: Run black check
-        run: black --check .
-
-  test-pipeline-modes:
-    name: Test Pipeline Modes
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        mode: [DRAFT, FAST, FULL]
-    
-    env:
-      MODE: ${{ matrix.mode }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Set environment
-        run: |
-          echo "DRAFT_PIPELINE=${{ matrix.mode == 'DRAFT' }}" >> $GITHUB_ENV
-          echo "FAST_PIPELINE=${{ matrix.mode == 'FAST' }}" >> $GITHUB_ENV
-      
-      - name: Run tests with mode
-        run: |
-          python -c "
-            import os
-            os.environ['USE_DATABASE'] = 'false'
-            os.environ['OPENAI_API_KEY'] = 'test'
-            import config
-            print(f'DRAFT: {config.DRAFT_PIPELINE}, FAST: {config.FAST_PIPELINE}')
-          "
-
-  benchmark-comparison:
-    name: Benchmark Comparison
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      
-      - name: Run benchmark
-        run: python benchmark.py
-      
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "Benchmark results:" >> $GITHUB_STEP_SUMMARY
-          cat benchmark_results.json >> $GITHUB_STEP_SUMMARY
