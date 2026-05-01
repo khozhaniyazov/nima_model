@@ -1,0 +1,30 @@
+# Pre-commit hooks for NIMA.
+# Install: pip install pre-commit && pre-commit install
+# Run on demand: pre-commit run --all-files
+#
+# These hooks mirror what CI enforces, so you find issues before pushing.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      # No `ruff-format` yet — the codebase isn't formatter-clean and we
+      # don't want a giant reformatting commit hidden in someone's PR.
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        # Markdown is allowed to have trailing 2-space line breaks; skip it.
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=2048]   # block accidentally committing renders/datasets
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
