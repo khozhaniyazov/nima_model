@@ -593,6 +593,91 @@ def test_short_final_quality_failure_uses_fallback_render() -> None:
     print("[OK] stream service - short final quality failure uses fallback render")
 
 
+def test_short_final_fallback_reuses_already_deterministic_scene() -> None:
+    """Closes #10: the job-level short fallback should reuse scenes that are
+    already marked `_generation_source == "deterministic_short_fallback"` and
+    have a valid prior render on disk, instead of re-rendering them."""
+    job_id = "streamsvc007b"
+    status = {}
+    webhooks = []
+    # The per-scene fallback already produced this MP4.
+    prior_scene_video = _dummy_video("stream_service_already_det_scene.mp4")
+    # If the bug recurs and we re-render, this would be the new path.
+    rerender_scene = _dummy_video("stream_service_already_det_rerender.mp4")
+    fallback_final = _dummy_video("stream_service_already_det_final.mp4")
+
+    deps = _install_stubs(
+        status,
+        webhooks,
+        lambda **kwargs: (
+            [str(prior_scene_video)],
+            kwargs["narrative_context"],
+            [],
+            {0: (str(prior_scene_video), True, "")},
+        ),
+    )
+    original_analyze = stream_service.analyze_video_frames
+    original_fallback = stream_service._render_short_fallback_scene
+    original_stitch = stream_service.stitch_scenes
+    original_split = stream_service.split_plan_into_scenes
+    calls = {"analyze": 0, "fallback": 0}
+    try:
+        # Override the splitter to mark the scene as already deterministic —
+        # this simulates the per-scene fallback path having already done its
+        # work in `algorithms.streaming.generate_scene` (PR #6).
+        stream_service.split_plan_into_scenes = lambda plan_data, max_scenes: [
+            {
+                "scene_id": "scene_0",
+                "description": "deterministic scene",
+                "_generation_source": "deterministic_short_fallback",
+            }
+        ]
+        # Force the job-level fallback path: first analyze fails, second passes.
+        stream_service.analyze_video_frames = lambda path: (
+            calls.__setitem__("analyze", calls["analyze"] + 1)
+            or {
+                "ok": calls["analyze"] > 1,
+                "score": 100 if calls["analyze"] > 1 else 30,
+                "warnings": [] if calls["analyze"] > 1 else ["crowded"],
+                "sampled_frames": 4,
+                "frames": [],
+            }
+        )
+
+        def fake_fallback(*args, **kwargs):  # pragma: no cover - must not run
+            calls["fallback"] += 1
+            return str(rerender_scene), True, "", args[1]
+
+        stream_service._render_short_fallback_scene = fake_fallback
+        stream_service.stitch_scenes = (
+            lambda video_paths, output, fps=30: str(fallback_final)
+        )
+
+        output, scene_results, _ = stream_generate_and_render_job(
+            "Explain a visually crowded short with already-deterministic scene",
+            job_id,
+            voiceover=False,
+            video_mode="short",
+            deps=deps,
+        )
+    finally:
+        stream_service.analyze_video_frames = original_analyze
+        stream_service._render_short_fallback_scene = original_fallback
+        stream_service.stitch_scenes = original_stitch
+        stream_service.split_plan_into_scenes = original_split
+
+    assert status.get("status") == "done", status
+    # Key assertion: the job-level retry must have skipped re-rendering.
+    assert calls["fallback"] == 0, (
+        "expected job-level final fallback to reuse already-deterministic "
+        f"scene, but _render_short_fallback_scene was called {calls['fallback']} time(s)"
+    )
+    assert Path(output).exists(), output
+    # The reused video path should be the prior per-scene fallback, not the rerender.
+    assert scene_results[0]["video_path"] == str(prior_scene_video), scene_results
+    print("[OK] stream service - already-deterministic short scene is reused, not re-rendered")
+
+
 def test_short_final_fallback_preserves_scene_voiceover() -> None:
     job_id = "streamsvc008"
     status = {}

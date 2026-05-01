@@ -201,8 +201,18 @@ def _render_short_final_fallback(
     final_output: str,
     watermark: dict | None,
     scene_tts: dict[int, dict] | None = None,
+    existing_completed_renders: dict[int, tuple[str, bool, str]] | None = None,
 ) -> tuple[str, dict, dict[int, tuple[str, bool, str]]]:
-    """Render deterministic short fallback scenes and stitch them as a final retry."""
+    """Render deterministic short fallback scenes and stitch them as a final retry.
+
+    When `existing_completed_renders` is supplied, scenes whose plan already
+    carries `_generation_source == "deterministic_short_fallback"` (set by
+    PR #6's per-scene fallback path in `algorithms.streaming.generate_scene`)
+    AND whose prior MP4 is on disk and passes `validate_video_file` are
+    reused verbatim instead of being re-rendered. This avoids re-running the
+    deterministic short renderer over inputs that produce identical output.
+    Closes #10.
+    """
     fallback_paths: list[str] = []
     fallback_completed: dict[int, tuple[str, bool, str]] = {}
     fallback_context = narrative_context
@@ -211,6 +221,26 @@ def _render_short_final_fallback(
 
     for scene_num, scene in enumerate(scenes):
         fallback_context.scene_index = scene_num
+
+        prior = (existing_completed_renders or {}).get(scene_num)
+        prior_path = prior[0] if prior else ""
+        prior_ok = bool(prior and prior[1])
+        if (
+            prior_ok
+            and prior_path
+            and scene.get("_generation_source") == "deterministic_short_fallback"
+            and Path(prior_path).exists()
+            and validate_video_file(prior_path).ok
+        ):
+            print(
+                f"[{job_id}] [STREAM] reusing deterministic short fallback "
+                f"for scene {scene_num}"
+            )
+            path, ok, err = prior_path, True, ""
+            fallback_completed[scene_num] = (path, ok, err)
+            fallback_paths.append(path)
+            continue
+
         path, ok, err, fallback_context = _render_short_fallback_scene(
             scene,
             fallback_context,
@@ -668,6 +698,7 @@ class GeneratedScene(Scene):
                     final_output=final_output,
                     watermark=watermark,
                     scene_tts=scene_tts,
+                    existing_completed_renders=completed_renders,
                 )
             )
             final_validation = validate_video_file(final_output)

@@ -4,6 +4,7 @@
 
 ### Changed
 - `STREAM_PROVIDER_TOTAL_TIMEOUT` default raised from 90s to 120s. With `gpt-5.4` on `zjuapi.com` and 2200-token caps, per-scene generation routinely lands at 40-90s; the previous 90s default tripped `_partial_scene_content_is_usable` on later scenes even when the provider was healthy. Operators on faster providers can override via env. Closes #9.
+- `_render_short_final_fallback` now reuses scenes that are already marked `_generation_source == "deterministic_short_fallback"` and have a valid prior MP4 on disk, instead of re-rendering them. Reduces wall-clock when the per-scene fallback already produced output that the job-level retry would regenerate identically. Closes #10.
 
 ## 2026-03-10
 
