@@ -25,7 +25,6 @@ Components:
   9. estimate_scene_cost() — token budget estimation
 """
 
-import os
 import json
 import sys
 import time
@@ -39,15 +38,17 @@ from typing import Iterator, Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from dotenv import load_dotenv
-
-load_dotenv(override=False)
-
 from config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
     OPENAI_TIMEOUT,
+    ZJUBAPI_BASE_URL,
+    ZJUBAPI_API_KEY,
+    ZJUBAPI_MODEL,
     ZJUBAPI_TIMEOUT,
+    WENWEN_BASE_URL,
+    WENWEN_API_KEY,
+    WENWEN_MODEL,
     WENWEN_TIMEOUT,
     GENERATION_MODEL,
     FAST_MODEL,
@@ -56,6 +57,10 @@ from config import (
     RENDER_TIMEOUT_SECONDS,
     MAX_RENDER_RETRIES,
     STREAM_PARALLEL_RENDERS,
+    STREAM_PROVIDER as CONFIG_STREAM_PROVIDER,
+    STREAM_PROVIDER_FAILURE_COOLDOWN,
+    STREAM_PROVIDER_TOTAL_TIMEOUT,
+    STREAM_PROVIDER_USE_SUBPROCESS,
     STREAM_SCENE_TIMEOUT as CONFIG_STREAM_SCENE_TIMEOUT,
     STREAM_MAX_SCENES as CONFIG_STREAM_MAX_SCENES,
     STREAM_SCENE_RETRIES as CONFIG_STREAM_SCENE_RETRIES,
@@ -83,23 +88,21 @@ from RAG.RAG_system import retrieve_golden_example, retrieve_patterns
 
 # Multi-provider streaming LLM configuration
 PROVIDER_PRIORITY = ("zjuapi", "wenwen", "openai")
-PROVIDER_FAILURE_COOLDOWN_SECONDS = int(
-    os.getenv("STREAM_PROVIDER_FAILURE_COOLDOWN", "180")
-)
-PROVIDER_TOTAL_TIMEOUT_SECONDS = int(os.getenv("STREAM_PROVIDER_TOTAL_TIMEOUT", "90"))
+PROVIDER_FAILURE_COOLDOWN_SECONDS = STREAM_PROVIDER_FAILURE_COOLDOWN
+PROVIDER_TOTAL_TIMEOUT_SECONDS = STREAM_PROVIDER_TOTAL_TIMEOUT
 _PROVIDER_COOLDOWNS: Dict[str, float] = {}
 
 STREAM_PROVIDERS = {
     "zjuapi": {
-        "base_url": os.getenv("ZJUBAPI_BASE_URL", "https://ai-cfs.zju.edu.cn"),
-        "api_key": os.getenv("ZJUBAPI_API_KEY", ""),
-        "model": os.getenv("ZJUBAPI_MODEL", "gpt-5.4"),
+        "base_url": ZJUBAPI_BASE_URL,
+        "api_key": ZJUBAPI_API_KEY,
+        "model": ZJUBAPI_MODEL,
         "timeout": ZJUBAPI_TIMEOUT,
     },
     "wenwen": {
-        "base_url": os.getenv("WENWEN_BASE_URL", "https://api.wenwen-ai.com"),
-        "api_key": os.getenv("WENWEN_API_KEY", ""),
-        "model": os.getenv("WENWEN_MODEL", "claude-opus-4-6"),
+        "base_url": WENWEN_BASE_URL,
+        "api_key": WENWEN_API_KEY,
+        "model": WENWEN_MODEL,
         "timeout": WENWEN_TIMEOUT,
     },
     "openai": {
@@ -111,7 +114,7 @@ STREAM_PROVIDERS = {
 }
 
 # Active provider (auto-select based on availability)
-STREAM_PROVIDER = os.getenv("STREAM_PROVIDER", "auto")
+STREAM_PROVIDER = CONFIG_STREAM_PROVIDER
 
 # Scene generation settings
 STREAM_SCENE_TIMEOUT = CONFIG_STREAM_SCENE_TIMEOUT
@@ -1240,8 +1243,7 @@ def _generate_with_provider(
     *,
     stream: bool,
 ) -> str:
-    use_subprocess = os.getenv("STREAM_PROVIDER_USE_SUBPROCESS", "true").lower()
-    if use_subprocess not in {"0", "false", "no", "off"}:
+    if STREAM_PROVIDER_USE_SUBPROCESS:
         return _generate_with_provider_subprocess(
             prompt, context, provider_name, stream=stream
         )

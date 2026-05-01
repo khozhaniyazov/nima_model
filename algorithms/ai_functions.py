@@ -14,15 +14,10 @@ Changes vs. original:
 """
 
 from openai import OpenAI
-import os
 import json
 import time
 from pathlib import Path
 from typing import Optional
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, GENERATION_MODEL, FAST_MODEL
 from algorithms.error_parser import parse_manim_error, format_error_for_prompt

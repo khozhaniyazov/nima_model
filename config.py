@@ -51,6 +51,7 @@ TTS_API_KEY = os.getenv("TTS_API_KEY") or OPENAI_API_KEY
 TTS_BASE_URL = os.getenv("TTS_BASE_URL") or OPENAI_BASE_URL
 TTS_MODEL = "edge-tts"  # Using edge-tts (free, no API key)
 TTS_VOICE = "en-US-GuyNeural"  # Microsoft neural voice
+EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", TTS_VOICE)  # override per-segment voice
 ENABLE_VOICEOVER = os.environ.get("ENABLE_VOICEOVER", "true").lower() == "true"
 
 # ── Rate Limiting ────────────────────────────────────────────────────────────
@@ -109,6 +110,26 @@ STREAM_PARALLEL_RENDERS = (
 )
 SHORT_DRAFT_FAST_PATH = (
     os.environ.get("SHORT_DRAFT_FAST_PATH", "false").lower() == "true"
+)
+
+# Multi-provider failover knobs (used by algorithms.streaming)
+STREAM_PROVIDER_FAILURE_COOLDOWN = int(
+    os.getenv("STREAM_PROVIDER_FAILURE_COOLDOWN", "180")
+)
+STREAM_PROVIDER_TOTAL_TIMEOUT = int(os.getenv("STREAM_PROVIDER_TOTAL_TIMEOUT", "90"))
+STREAM_PROVIDER_USE_SUBPROCESS = (
+    os.getenv("STREAM_PROVIDER_USE_SUBPROCESS", "true").lower() == "true"
+)
+
+# Request analysis knobs (used by algorithms.request_analysis)
+# Falls back to min(OPENAI_TIMEOUT, 60) but uses (OPENAI_TIMEOUT or 60) so an
+# operator who sets OPENAI_TIMEOUT=0 doesn't accidentally clamp planning to 10s.
+REQUEST_ANALYSIS_TIMEOUT = max(
+    10,
+    int(os.getenv("REQUEST_ANALYSIS_TIMEOUT", str(min(OPENAI_TIMEOUT or 60, 60)))),
+)
+REQUEST_ANALYSIS_USE_SUBPROCESS = (
+    os.getenv("REQUEST_ANALYSIS_USE_SUBPROCESS", "true").lower() == "true"
 )
 
 # ── Video Modes ──────────────────────────────────────────────────────────────

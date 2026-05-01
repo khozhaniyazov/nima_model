@@ -235,7 +235,7 @@ def test_stream_generate_tries_next_provider_after_timeout(monkeypatch):
             return [_FakeLLMChunk(fake_code)] if kwargs.get("stream") else _FakeLLMResponse(fake_code)
 
     monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
-    monkeypatch.setenv("STREAM_PROVIDER_USE_SUBPROCESS", "false")
+    monkeypatch.setattr(streaming, "STREAM_PROVIDER_USE_SUBPROCESS", False)
     monkeypatch.setattr(streaming, "STREAM_PROVIDER", "auto")
     streaming._PROVIDER_COOLDOWNS.clear()
     for name, base_url in [("zjuapi", "zju"), ("wenwen", "wen"), ("openai", "openai")]:
@@ -270,7 +270,7 @@ def test_stream_generate_uses_non_streaming_directly_for_single_provider(monkeyp
             return _FakeLLMResponse(fake_code)
 
     monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
-    monkeypatch.setenv("STREAM_PROVIDER_USE_SUBPROCESS", "false")
+    monkeypatch.setattr(streaming, "STREAM_PROVIDER_USE_SUBPROCESS", False)
     monkeypatch.setattr(streaming, "STREAM_PROVIDER", "zjuapi")
     streaming._PROVIDER_COOLDOWNS.clear()
     monkeypatch.setitem(streaming.STREAM_PROVIDERS["zjuapi"], "api_key", "key")

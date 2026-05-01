@@ -12,12 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# Default voice for edge-tts (Microsoft neural voices)
-EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-GuyNeural")
+from config import EDGE_TTS_VOICE
 from algorithms.media_tools import (
     ffmpeg_command as _ffmpeg_command,
     ffprobe_command as _ffprobe_command,

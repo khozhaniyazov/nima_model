@@ -1,6 +1,6 @@
-# Contributing to NIMA
+# Working on NIMA
 
-Quick guide for making changes that flow cleanly through CI and review.
+Internal team workflow for making changes that flow cleanly through CI and review. NIMA is a private/internal codebase — this guide is for team members, not outside contributors.
 
 ## Project layout
 
@@ -25,9 +25,16 @@ For lint/format work also install ruff:
 pip install ruff
 ```
 
+Optional, recommended: install pre-commit hooks so the same checks run before each commit:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
 ## Workflow
 
-Every non-trivial change goes through a PR (see also: `feedback_pr_workflow.md` in agent memory). Direct push to `main` is reserved for trivial typo/doc-only fixes.
+Every non-trivial change goes through a PR. Direct push to `main` is reserved for trivial typo/doc-only fixes.
 
 1. Branch with a conventional prefix:
    - `feat/<thing>` — user-visible feature
@@ -61,21 +68,13 @@ System deps for `manim` build are installed in CI (`pkg-config`, `libpango1.0-de
 ## Architecture rules (enforced by review)
 
 - **`app.py` is a thin Flask factory.** Logic belongs in `algorithms/` and routes in `api_routes/`.
-- **`config.py` is the only env reader.** Other modules import constants from `config`.
+- **`config.py` is the only env reader.** Other modules import constants from `config`. New env-driven knobs go in `config.py` first, then get imported.
 - **Tests under `tests/`, dev scripts under `scripts/`, design docs under `docs/`, phase plans under `.planning/phases/NN-name/`.**
-- **Never commit secrets.** `.env` is gitignored; defaults in `config.py` must be empty for credential-shaped values.
+- **Never commit secrets.** `.env` is gitignored; defaults in `config.py` must be empty for credential-shaped values. If `USE_DATABASE=true`, `DB_CONNECTION_STRING` is mandatory and `config.py` will fail fast at import time.
 
 ## Testing tips
 
-- `pytest tests/` runs the full suite (~5s, 197 tests today).
+- `pytest tests/` runs the full suite (~5s).
 - A single test file: `pytest tests/test_streaming_split.py -v`.
 - A single test by name: `pytest tests/ -k "scene_quality_warning"`.
 - Live-backend reliability checks: `python scripts/reliability_streaming.py` (requires the Flask server running).
-
-## Reporting bugs / requesting features
-
-Open an issue with:
-
-- A minimal reproducer (prompt + mode if it's a generation issue; payload if it's an API issue).
-- Expected vs. actual.
-- Relevant log excerpt from `flask.log` or `manim_generator.log` if available.
