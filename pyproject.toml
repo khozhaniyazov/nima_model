@@ -5,8 +5,7 @@ target-version = "py311"
 
 # Skip vendored / generated / non-Python content.
 extend-exclude = [
-    "training",        # 3b1b animation training corpus (vendored)
-    "RAG/3b1b",        # 3b1b RAG corpus (vendored)
+    "training",        # 3b1b animation corpus (vendored, includes training/3b1b/)
     "skills",          # agentic skill bundles (vendored)
     "nima-frontend",   # Next.js app
     "outputs",         # render outputs
