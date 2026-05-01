@@ -1372,86 +1372,40 @@ def _generate_with_provider_subprocess(
         "max_tokens": _provider_max_tokens(context, stream=stream),
         "messages": _build_llm_messages(prompt, context),
     }
-    child_code = r"""
-import json
-import sys
-from openai import OpenAI
-
-payload_path = sys.argv[1]
-output_path = sys.argv[2]
-with open(payload_path, "r", encoding="utf-8") as f:
-    payload = json.load(f)
-
-client = OpenAI(
-    api_key=payload["api_key"],
-    base_url=payload.get("base_url"),
-    timeout=payload.get("timeout") or 60,
-)
-
-_MAX_TOKEN_HINTS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
-_MAX_TOKEN_REJECT_PHRASES = (
-    "unsupported parameter",
-    "unrecognized",
-    "is not supported",
-    "not allowed",
-    "is not allowed",
-    "not permitted",
-)
-
-
-def _is_max_tokens_unsupported(exc):
-    msg = str(exc).lower()
-    if not any(p in msg for p in _MAX_TOKEN_REJECT_PHRASES):
-        return False
-    return any(h in msg for h in _MAX_TOKEN_HINTS)
-
-
-def _create(**kwargs):
-    try:
-        return client.chat.completions.create(**kwargs)
-    except Exception as exc:
-        if "max_tokens" in kwargs and _is_max_tokens_unsupported(exc):
-            kwargs.pop("max_tokens", None)
-            # stdout so the parent's [STREAM] log surfaces this telemetry
-            print(
-                "[STREAM] child: provider rejected max_tokens; retrying without it",
-                flush=True,
-            )
-            return client.chat.completions.create(**kwargs)
-        raise
-
-
-response = _create(
-    model=payload["model"],
-    messages=payload["messages"],
-    stream=payload["stream"],
-    max_tokens=payload["max_tokens"],
-)
-
-with open(output_path, "w", encoding="utf-8", errors="replace") as out:
-    if payload["stream"]:
-        for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
-                out.write(chunk.choices[0].delta.content)
-                out.flush()
-    else:
-        out.write(response.choices[0].message.content or "")
-        out.flush()
-"""
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="nima-llm-"))
     payload_path = tmp_dir / "payload.json"
     output_path = tmp_dir / "output.txt"
     payload_path.write_text(json.dumps(payload), encoding="utf-8")
     output_path.write_text("", encoding="utf-8")
+    # Resolve to the project root (parent of `algorithms/`) so `python -m
+    # algorithms._streaming_child` can import the module regardless of the
+    # parent process's cwd.
+    project_root = Path(__file__).resolve().parent.parent
     try:
         result = subprocess.run(
-            [sys.executable, "-X", "utf8", "-c", child_code, str(payload_path), str(output_path)],
+            [
+                sys.executable,
+                "-X",
+                "utf8",
+                "-m",
+                "algorithms._streaming_child",
+                str(payload_path),
+                str(output_path),
+            ],
             capture_output=True,
             text=True,
             timeout=request_timeout + 5,
+            cwd=str(project_root),
         )
         content = output_path.read_text(encoding="utf-8", errors="replace")
+        # Surface any [STREAM] telemetry the child emitted to stdout (e.g.,
+        # the max_tokens-fallback log line) so it lands in operator logs
+        # alongside the parent's [STREAM] lines.
+        if result.stdout:
+            for line in result.stdout.splitlines():
+                if line.startswith("[STREAM]"):
+                    print(line)
         if result.returncode != 0:
             raise RuntimeError((result.stderr or result.stdout or "provider subprocess failed")[-1200:])
         return content
