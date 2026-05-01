@@ -17,7 +17,9 @@ extend-exclude = [
 
 [tool.ruff.lint]
 # Practical rule set for this codebase. We can tighten later.
-select = ["E", "F", "W"]
+# `B` (flake8-bugbear) catches the kind of latent bugs we keep finding by hand:
+# `raise ... from`, mutable default args, misleading `.strip()`, etc.
+select = ["E", "F", "W", "B"]
 ignore = [
     "E501",  # line too long; we wrap when it helps readability
     "F401",  # unused import; many test/stub files keep imports for symmetry

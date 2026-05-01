@@ -30,7 +30,7 @@ def _extract_vgroup_children(code: str) -> Dict[str, List[str]]:
     lines = code.splitlines()
 
     vgroup_pattern = re.compile(r"(\w+)\s*=\s*VGroup\(([^)]+)\)")
-    for i, line in enumerate(lines, 1):
+    for line in lines:
         vm = vgroup_pattern.search(line)
         if vm:
             vg_var = vm.group(1)
@@ -563,7 +563,7 @@ def detect_section_leak(code: str) -> List[str]:
             if var_name not in created_objects:
                 created_objects[var_name] = (i, obj_type)
 
-    for start, end, sec_var, added_objs in section_ranges:
+    for start, end, _sec_var, added_objs in section_ranges:
         section_content = "\n".join(lines[start:end])
         section_creates = re.findall(
             r"(\w+)\s*=\s*(?:VGroup|NumberPlane|ComplexPlane|Axes|MathTex|Text|Circle|Square|Dot|Line|Arrow)\(",

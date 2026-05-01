@@ -1162,7 +1162,7 @@ APPROACH: [1 sentence: main teaching approach]
             )
 
             if not result:
-                raise ValueError("Empty analysis response")
+                raise ValueError("Empty analysis response") from None
 
             for line in result.split("\n"):
                 line = line.strip()
@@ -1817,7 +1817,17 @@ def expand_short_prompt(prompt: str) -> str:
             )
 
         if extension:
-            prompt = prompt.rstrip("…").rstrip("...") + extension
+            # Strip a trailing ellipsis (either Unicode "…" or ASCII "...")
+            # before appending. .rstrip("...") would strip any trailing
+            # combination of '.' characters, which is the same effect we want
+            # but ruff (B005) flags multi-char strip strings as misleading; do
+            # the substring strip explicitly so intent is unambiguous.
+            stripped = prompt.rstrip()
+            if stripped.endswith("…"):
+                stripped = stripped[:-1].rstrip()
+            elif stripped.endswith("..."):
+                stripped = stripped[:-3].rstrip()
+            prompt = stripped + extension
 
     if prompt != original:
         print(f"[EXPAND] Expanded prompt: '{original}' -> '{prompt}'")
