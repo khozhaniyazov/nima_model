@@ -7,7 +7,7 @@ import argparse
 import random
 
 from prompt_pool import EDGE_PROMPTS
-from test_streaming_reliability import backend_available, run_one
+from reliability_streaming import backend_available, run_one
 
 
 def main() -> int:
