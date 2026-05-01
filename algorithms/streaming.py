@@ -1238,9 +1238,19 @@ _MAX_TOKEN_PARAM_HINTS = (
 )
 
 
+_MAX_TOKEN_REJECT_PHRASES = (
+    "unsupported parameter",
+    "unrecognized",
+    "is not supported",
+    "not allowed",
+    "is not allowed",
+    "not permitted",
+)
+
+
 def _is_max_tokens_unsupported_error(exc: BaseException) -> bool:
     msg = str(exc).lower()
-    if "unsupported parameter" not in msg and "unrecognized" not in msg:
+    if not any(p in msg for p in _MAX_TOKEN_REJECT_PHRASES):
         return False
     return any(hint in msg for hint in _MAX_TOKEN_PARAM_HINTS)
 
@@ -1379,11 +1389,19 @@ client = OpenAI(
 )
 
 _MAX_TOKEN_HINTS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
+_MAX_TOKEN_REJECT_PHRASES = (
+    "unsupported parameter",
+    "unrecognized",
+    "is not supported",
+    "not allowed",
+    "is not allowed",
+    "not permitted",
+)
 
 
 def _is_max_tokens_unsupported(exc):
     msg = str(exc).lower()
-    if "unsupported parameter" not in msg and "unrecognized" not in msg:
+    if not any(p in msg for p in _MAX_TOKEN_REJECT_PHRASES):
         return False
     return any(h in msg for h in _MAX_TOKEN_HINTS)
 
@@ -1394,8 +1412,10 @@ def _create(**kwargs):
     except Exception as exc:
         if "max_tokens" in kwargs and _is_max_tokens_unsupported(exc):
             kwargs.pop("max_tokens", None)
-            sys.stderr.write(
-                "[STREAM] child: provider rejected max_tokens; retrying without it\n"
+            # stdout so the parent's [STREAM] log surfaces this telemetry
+            print(
+                "[STREAM] child: provider rejected max_tokens; retrying without it",
+                flush=True,
             )
             return client.chat.completions.create(**kwargs)
         raise

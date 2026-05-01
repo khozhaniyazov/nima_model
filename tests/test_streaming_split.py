@@ -5,6 +5,8 @@ import shutil
 from types import SimpleNamespace
 from pathlib import Path
 
+import pytest
+
 from config import OUTPUTS
 from algorithms import streaming
 from algorithms.course import course_plan_is_thin, upgrade_course_plan_data
@@ -282,6 +284,40 @@ def test_stream_generate_uses_non_streaming_directly_for_single_provider(monkeyp
     assert "class GeneratedScene" in generated
     assert calls == [("zju", False)]
     print("[OK] streaming providers - single provider uses direct non-streaming")
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        # Canonical OpenAI phrasing
+        (
+            "Error code: 400 - {'error': {'message': "
+            "'Unsupported parameter: max_output_tokens', "
+            "'type': 'invalid_request_error'}}",
+            True,
+        ),
+        # Azure phrasing
+        (
+            "The parameter 'max_tokens' is not supported with this model. "
+            "Use 'max_completion_tokens' instead.",
+            True,
+        ),
+        # Proxy phrasing
+        ("Parameter 'max_completion_tokens' is not allowed for this endpoint.", True),
+        # Unrelated 400 should NOT trigger fallback
+        (
+            "Error code: 400 - {'error': {'message': 'Unsupported parameter: temperature'}}",
+            False,
+        ),
+        # Generic timeout — no token hint at all
+        ("Request timed out after 60s", False),
+        # Has token hint but no rejection phrase — must not trigger
+        ("max_tokens=2200", False),
+    ],
+)
+def test_is_max_tokens_unsupported_error_phrasings(message, expected):
+    """Matcher must catch common provider phrasings without false positives."""
+    assert streaming._is_max_tokens_unsupported_error(RuntimeError(message)) is expected
 
 
 def test_stream_generate_drops_max_tokens_on_unsupported_parameter_error(monkeypatch):
