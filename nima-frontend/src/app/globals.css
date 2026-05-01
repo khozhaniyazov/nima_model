@@ -25,6 +25,40 @@
 
   --font-display: 'Syne', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  /* Theme system */
+  --accent-color: #8B5CF6;
+  --accent-color-dim: rgba(139, 92, 246, 0.15);
+  --accent-color-foreground: #ffffff;
+}
+
+/* Light theme */
+.light {
+  --bg-void: #f8fafc;
+  --bg-panel: rgba(255, 255, 255, 0.9);
+  --bg-input: rgba(241, 245, 249, 0.8);
+  --border-grid: rgba(0, 0, 0, 0.05);
+  --border-strong: rgba(0, 0, 0, 0.15);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+}
+
+/* Dark theme (default) */
+.dark {
+  --bg-void: #030303;
+  --bg-panel: rgba(10, 10, 10, 0.7);
+  --bg-input: rgba(15, 15, 15, 0.8);
+  --border-grid: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --text-muted: #444444;
+}
+
+/* Theme transition */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 * {
