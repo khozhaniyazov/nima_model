@@ -198,6 +198,50 @@ def test_write_response_non_streamed_handles_none_content(tmp_path: Path):
     assert out.read_text(encoding="utf-8") == ""
 
 
+def test_write_response_non_streamed_handles_raw_string(tmp_path: Path):
+    """Some proxies return ``chat.completions.create(stream=False)`` as a raw
+    ``str`` rather than a ``ChatCompletion`` — observed live with zjuapi.com /
+    gpt-5.4 on 2026-05-02 (job ``smoke-course-be35f4``). We must not crash
+    with ``AttributeError: 'str' object has no attribute 'choices'``; we must
+    write the string through verbatim.
+    """
+    out = tmp_path / "out.txt"
+    _streaming_child.write_response(
+        "from manim import *\nclass GeneratedScene(Scene): pass\n",
+        out,
+        stream=False,
+    )
+    assert out.read_text(encoding="utf-8") == (
+        "from manim import *\nclass GeneratedScene(Scene): pass\n"
+    )
+
+
+def test_write_response_non_streamed_handles_dict_payload(tmp_path: Path):
+    """OpenAI-shape dict payloads (also observed from some proxy passthroughs)
+    must extract ``choices[0].message.content`` instead of stringifying the
+    dict and writing braces to disk.
+    """
+    out = tmp_path / "out.txt"
+    response = {
+        "choices": [{"message": {"content": "hello from dict"}}],
+    }
+    _streaming_child.write_response(response, out, stream=False)
+    assert out.read_text(encoding="utf-8") == "hello from dict"
+
+
+def test_write_response_non_streamed_raises_on_unknown_shape(tmp_path: Path):
+    """Unrecognised shapes must raise ``TypeError`` so the parent surfaces a
+    clear error instead of swallowing a misleading "0 chars" trace.
+    """
+    out = tmp_path / "out.txt"
+    with pytest.raises(TypeError):
+        _streaming_child.write_response(12345, out, stream=False)
+    with pytest.raises(TypeError):
+        _streaming_child.write_response(None, out, stream=False)
+    with pytest.raises(TypeError):
+        _streaming_child.write_response({"unexpected": "shape"}, out, stream=False)
+
+
 # ---------------------------------------------------------------------------
 # run() with a fake openai SDK injected
 # ---------------------------------------------------------------------------

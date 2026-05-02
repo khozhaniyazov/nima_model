@@ -86,6 +86,63 @@ def create_with_retry(create, *, log=print, **kwargs: Any):
         raise
 
 
+def _extract_completion_text(response) -> str:
+    """Pull the text content out of a non-streaming chat completion response.
+
+    Some upstream proxies (observed in production with ``zjuapi.com`` / gpt-5.4
+    on 2026-05-02, job ``smoke-course-be35f4``) return ``chat.completions.create
+    (stream=False)`` as a raw ``str`` rather than a typed ``ChatCompletion``.
+    Without a defensive shim, the next attribute access (``.choices[0]``) raises
+    ``AttributeError: 'str' object has no attribute 'choices'``, which the
+    parent surfaces as a misleading ``Empty or very short response (0 chars)``
+    while silently triggering the deterministic fallback.
+
+    This helper accepts the canonical typed shape, the raw-string shape, and
+    a handful of dict-shaped variants seen in proxy responses, and raises a
+    clear ``TypeError`` when none match so the parent can log something
+    actionable instead of swallowing the trace.
+    """
+    if response is None:
+        raise TypeError("provider returned None instead of a chat completion")
+    if isinstance(response, str):
+        # Raw text — proxy already unwrapped the completion. Caller writes
+        # whatever the model emitted.
+        return response
+    if isinstance(response, dict):
+        # OpenAI-shape dict: {"choices": [{"message": {"content": "..."}}]}.
+        # Be permissive about a few common proxy aliases.
+        choices = response.get("choices") or []
+        if choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                msg = first.get("message") or {}
+                if isinstance(msg, dict):
+                    content = msg.get("content")
+                    if isinstance(content, str):
+                        return content
+                # Some proxies put the text directly on the choice.
+                text = first.get("text")
+                if isinstance(text, str):
+                    return text
+        # Bare ``{"content": "..."}`` — last-resort shape.
+        content = response.get("content")
+        if isinstance(content, str):
+            return content
+        raise TypeError(
+            f"provider returned dict without recognised completion shape: keys={sorted(response)[:6]}"
+        )
+    # Typed ChatCompletion path. Guard against missing choices so a malformed
+    # SDK object also surfaces a clean message instead of an IndexError.
+    choices = getattr(response, "choices", None)
+    if not choices:
+        raise TypeError(
+            f"provider response of type {type(response).__name__} has no usable choices"
+        )
+    message = getattr(choices[0], "message", None)
+    content = getattr(message, "content", None) if message is not None else None
+    return content or ""
+
+
 def write_response(response, output_path: Path, *, stream: bool) -> None:
     """Persist either a streamed chunk iterator or a single completion to disk."""
     with output_path.open("w", encoding="utf-8", errors="replace") as out:
@@ -95,7 +152,7 @@ def write_response(response, output_path: Path, *, stream: bool) -> None:
                     out.write(chunk.choices[0].delta.content)
                     out.flush()
         else:
-            out.write(response.choices[0].message.content or "")
+            out.write(_extract_completion_text(response))
             out.flush()
 
 
