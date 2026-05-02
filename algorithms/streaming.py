@@ -1828,11 +1828,91 @@ def generate_scene(
             if attempt < max_retries:
                 context.scene_history.append(f"[RETRY] {scene_desc}: {str(e)[:100]}")
 
-    # All retries failed — fall back to a deterministic scene where one is
-    # available for this mode. Short mode previously had no per-scene fallback,
-    # which meant a single failing scene aborted the whole short video; the
-    # job-level short-fallback retry that re-renders every scene is far more
-    # expensive than just dropping a deterministic last-resort scene here.
+    # Issue #20: in speed_mode (DRAFT/FAST), `max_retries == 1`, so the loop
+    # above fires exactly once — the gate-aware surgical retry that PR #7
+    # added is therefore *never* given a chance and the deterministic
+    # fallback overrides the scene on every classifiable layout error.
+    # Guarantee one surgical retry whenever the failure is classifiable
+    # (overlap / accumulation / leftover / edge_crowding / text_overlap),
+    # regardless of the speed-mode budget. The cost is one extra LLM call
+    # per affected scene — tiny compared to permanently discarding the
+    # LLM render and shipping a deterministic template.
+    if (
+        last_error is not None
+        and max_retries < 2
+        and _classify_retry_error(str(last_error)) != "generic"
+    ):
+        try:
+            print(
+                f"[STREAM] Scene {scene_num} attempting surgical retry before "
+                f"deterministic fallback (gate={_classify_retry_error(str(last_error))})"
+            )
+            surgical_prompt = prompt + _build_retry_addendum(
+                last_error, attempt=2, scene_plan=scene_plan
+            )
+            code_chunks = []
+            for token in stream_generate(surgical_prompt, context):
+                code_chunks.append(token)
+            full_code = "".join(code_chunks)
+            if not full_code or len(full_code) < 50:
+                raise ValueError(
+                    f"Empty surgical response ({len(full_code)} chars)"
+                )
+            code = _extract_manim_code(full_code)
+            code = _sanitize_generated_code(code)
+            if context.domain_state.get("video_mode") == "lecture":
+                code = _enforce_minimum_font_size(
+                    code,
+                    int(context.domain_state.get("minimum_label_font_size") or 24),
+                )
+
+            from algorithms.code_digest import (
+                validate_python_syntax,
+                validate_manim_code,
+                validate_names_and_imports,
+                check_code_quality,
+            )
+
+            ok, err = validate_python_syntax(code)
+            if not ok:
+                raise ValueError(f"Syntax error: {err}")
+            ok, err = validate_manim_code(code)
+            if not ok:
+                raise ValueError(err)
+            ok, issues = validate_names_and_imports(code)
+            if not ok:
+                raise ValueError("; ".join(issues[:3]))
+            quality_ok, quality_messages = check_code_quality(code)
+            blocking = [m for m in quality_messages if m.startswith("[ERR]")]
+            if blocking:
+                raise ValueError("; ".join(blocking[:3]))
+            pattern_err = _reject_known_bad_patterns(code)
+            if pattern_err:
+                raise ValueError(pattern_err)
+            layout_err = _reject_layout_hygiene_code(code, context, scene_plan)
+            if layout_err:
+                raise ValueError(layout_err)
+
+            print(
+                f"[STREAM] Scene {scene_num} surgical retry succeeded "
+                f"({len(code)} chars); using LLM render instead of deterministic fallback"
+            )
+            _mark_scene_generation(scene_plan, "llm_surgical_retry")
+            context = _update_context_from_scene(context, code, scene_desc)
+            return code, context
+        except Exception as surgical_error:
+            print(
+                f"[STREAM] Scene {scene_num} surgical retry also failed: "
+                f"{surgical_error}"
+            )
+            last_error = surgical_error
+
+    # All retries (including the surgical retry above when it ran) failed —
+    # fall back to a deterministic scene where one is available for this
+    # mode. Short mode previously had no per-scene fallback, which meant a
+    # single failing scene aborted the whole short video; the job-level
+    # short-fallback retry that re-renders every scene is far more expensive
+    # than just dropping a deterministic last-resort scene here.
     mode = context.domain_state.get("video_mode")
     if mode == "standard":
         code = _make_standard_fallback_scene_code(scene_plan, context)
