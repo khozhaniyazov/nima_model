@@ -926,12 +926,45 @@ def _llm_text_in_process(prompt_messages, model: str) -> str:
         messages=prompt_messages,
         timeout=REQUEST_ANALYSIS_TIMEOUT_SECONDS,
     )
-    if not response or not getattr(response, "choices", None):
+    return _coerce_completion_text(response)
+
+
+def _coerce_completion_text(response) -> str:
+    """Pull text out of a chat-completion response with proxy-shape tolerance.
+
+    Some upstream proxies (observed live with ``zjuapi.com`` / gpt-5.4 on
+    2026-05-02) pre-unwrap ``chat.completions.create(stream=False)`` and return
+    a raw ``str`` or an OpenAI-shape ``dict`` instead of a typed
+    ``ChatCompletion``. The typed-only access pattern silently dropped both
+    shapes to ``""`` here and surfaced as ``Empty narrated plan response``,
+    which then forced the heuristic plan replacement on every job. See #21
+    and the symmetric fix for the per-scene streaming child in #17/#18.
+    """
+    if response is None:
+        return ""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        choices = response.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            msg = choices[0].get("message") or {}
+            if isinstance(msg, dict):
+                content = msg.get("content")
+                if isinstance(content, str):
+                    return content
+            text = choices[0].get("text")
+            if isinstance(text, str):
+                return text
+        content = response.get("content")
+        if isinstance(content, str):
+            return content
+        return ""
+    if not getattr(response, "choices", None):
         return ""
     message = response.choices[0].message
     if not message:
         return ""
-    return message.content or ""
+    return getattr(message, "content", "") or ""
 
 
 def _llm_text_subprocess(prompt_messages, model: str) -> str:
@@ -957,8 +990,38 @@ with open(payload_path, "r", encoding="utf-8") as f:
 client = OpenAI(
     api_key=payload["api_key"],
     base_url=payload.get("base_url"),
-    timeout=payload.get("timeout") or 60,
+    timeout=payload.get("timeout") or 120,
 )
+
+def _coerce(response):
+    # Tolerate proxy-pre-unwrapped responses (raw str / OpenAI-shape dict).
+    # See parent module's `_coerce_completion_text` and issue #21 — same reason
+    # the per-scene streaming child grew the equivalent shim in #17/#18.
+    if response is None:
+        return ""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        choices = response.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            msg = choices[0].get("message") or {}
+            if isinstance(msg, dict):
+                content = msg.get("content")
+                if isinstance(content, str):
+                    return content
+            text = choices[0].get("text")
+            if isinstance(text, str):
+                return text
+        content = response.get("content")
+        if isinstance(content, str):
+            return content
+        return ""
+    if not getattr(response, "choices", None):
+        return ""
+    message = response.choices[0].message
+    if not message:
+        return ""
+    return getattr(message, "content", "") or ""
 
 if payload.get("codex"):
     parts = []
@@ -975,19 +1038,16 @@ if payload.get("codex"):
                 "content": [{"type": "input_text", "text": input_text}],
             }
         ],
-        timeout=payload.get("timeout") or 60,
+        timeout=payload.get("timeout") or 120,
     )
     text = response.output_text or ""
 else:
     response = client.chat.completions.create(
         model=payload["model"],
         messages=payload["messages"],
-        timeout=payload.get("timeout") or 60,
+        timeout=payload.get("timeout") or 120,
     )
-    text = ""
-    if response and getattr(response, "choices", None):
-        message = response.choices[0].message
-        text = (message.content if message else "") or ""
+    text = _coerce(response)
 
 with open(output_path, "w", encoding="utf-8", errors="replace") as out:
     out.write(text)
