@@ -2238,6 +2238,127 @@ def test_short_retry_exhaustion_falls_back_to_short_deterministic(monkeypatch):
     print("[OK] streaming fallback - short retry exhaustion uses deterministic scene")
 
 
+def test_speed_mode_surgical_retry_runs_before_deterministic_fallback(monkeypatch):
+    """Issue #20: speed_mode (DRAFT/FAST) sets `max_retries=1`, so the in-loop
+    surgical retry from PR #7 never fires — every classifiable layout failure
+    fell straight through to the deterministic fallback. The post-loop
+    surgical retry should now give the LLM exactly one more chance with the
+    gate-aware addendum BEFORE the deterministic override.
+    """
+    context = streaming.NarrativeContext.from_analysis(
+        "Animate a blue circle morphing into a green square.",
+        {"domain": "general", "video_mode": "short", "aspect": "9:16"},
+    )
+    context.domain_state["video_mode"] = "short"
+
+    # Both renders need to be structurally valid (self.play, no recap markers,
+    # etc.) so the only thing rejecting attempt #1 is our patched layout gate.
+    base_code = (
+        "from manim import *\n\n"
+        "class GeneratedScene(Scene):\n"
+        "    def construct(self):\n"
+        "        title = Text('{label}')\n"
+        "        self.play(Write(title))\n"
+        "        self.wait(1)\n"
+        "        self.play(FadeOut(title))\n"
+        "        circle = Circle()\n"
+        "        self.play(Create(circle))\n"
+        "        self.play(Indicate(circle))\n"
+        "        self.play(circle.animate.shift(RIGHT))\n"
+        "        self.wait(0.5)\n"
+        "        self.play(FadeOut(circle))\n"
+    )
+    bad_code = base_code.format(label="Bad beat") + " " * 1500
+    good_code = base_code.format(label="Repaired beat") + " " * 1500
+
+    captured_prompts: list[str] = []
+    call_index = [0]
+
+    def fake_stream_generate(prompt, _context):
+        captured_prompts.append(prompt)
+        call_index[0] += 1
+        # First call: returns layout-bad code that the gate will reject.
+        # Second call (surgical retry): returns clean code we accept.
+        yield bad_code if call_index[0] == 1 else good_code
+
+    monkeypatch.setattr(streaming, "stream_generate", fake_stream_generate)
+
+    overlap_message = (
+        "Static layout hygiene risk detected before render: "
+        "[OVERLAP] Line 25 (panel_a) and line 26 (panel_b) "
+        "both placed at edge:UP with no FadeOut of panel_a between them."
+    )
+
+    layout_calls = [0]
+
+    def overlap_then_clear(_code, _scene_plan, _context):
+        layout_calls[0] += 1
+        # Reject the first attempt (in the for-loop) but accept the surgical
+        # retry's output so the LLM render is preserved.
+        return overlap_message if layout_calls[0] == 1 else None
+
+    monkeypatch.setattr(streaming, "_reject_layout_hygiene_code", overlap_then_clear)
+    # Don't let the other gates kill the surgical retry's clean code.
+    monkeypatch.setattr(streaming, "_reject_unbounded_long_text_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_static_short_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_short_duration_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_standard_engagement_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_course_instructional_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_lecture_academic_code", lambda *a, **k: None)
+    monkeypatch.setattr(streaming, "_reject_known_bad_patterns", lambda *a, **k: None)
+
+    scene_plan = {"title": "Ghost morph", "description": "Final beat", "duration_hint": 12}
+    # max_retries=1 mirrors what video_modes.py emits in DRAFT/FAST/speed_mode.
+    code, _updated = streaming.generate_scene(scene_plan, context, 4, max_retries=1)
+
+    # Two stream_generate calls: the original attempt, then the surgical retry.
+    assert call_index[0] == 2, captured_prompts
+    # Surgical addendum must be present on the retry prompt.
+    assert "SURGICAL OVERLAP REPAIR" in captured_prompts[1]
+    assert "panel_a" in captured_prompts[1]
+    # The clean LLM code was kept — NOT the deterministic fallback.
+    assert scene_plan["_generation_source"] == "llm_surgical_retry"
+    assert "Repaired beat" in code
+    print(
+        "[OK] streaming retry - speed_mode surgical retry runs before deterministic fallback"
+    )
+
+
+def test_speed_mode_generic_error_skips_surgical_retry(monkeypatch):
+    """The post-loop surgical retry should ONLY fire for classifiable gates
+    (overlap/accumulation/leftover/edge_crowding/text_overlap). For generic
+    errors (e.g. raw syntax problems with no gate token), we keep the prior
+    behaviour and go straight to the deterministic fallback — calling the
+    LLM again with a generic 'final attempt' blob just burns tokens.
+    """
+    context = streaming.NarrativeContext.from_analysis(
+        "Animate something",
+        {"domain": "general", "video_mode": "short", "aspect": "9:16"},
+    )
+    context.domain_state["video_mode"] = "short"
+
+    bad_code = "totally not python code at all" + " " * 1500
+    call_count = [0]
+
+    def fake_stream_generate(_prompt, _context):
+        call_count[0] += 1
+        yield bad_code
+
+    monkeypatch.setattr(streaming, "stream_generate", fake_stream_generate)
+
+    scene_plan = {"title": "Generic err", "description": "x", "duration_hint": 12}
+    code, _updated = streaming.generate_scene(scene_plan, context, 0, max_retries=1)
+
+    # Exactly ONE stream_generate call (the original) — no surgical retry,
+    # because the syntax error doesn't classify as a gate-recoverable failure.
+    assert call_count[0] == 1
+    assert scene_plan["_generation_source"] == "deterministic_short_fallback"
+    compile(code, "<short_fallback_generic>", "exec")
+    print(
+        "[OK] streaming retry - generic non-gate errors skip surgical retry"
+    )
+
+
 def test_standard_generation_timeout_uses_deterministic_fallback(monkeypatch):
     context = streaming.NarrativeContext.from_analysis(
         "Make a standard explainer about binary search",
