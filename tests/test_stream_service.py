@@ -417,7 +417,12 @@ def test_final_video_quality_failure_aborts_success_status() -> None:
     print("[OK] stream service - severe final frame quality cannot be marked done")
 
 
-def test_long_form_final_mode_quality_failure_aborts_success_status() -> None:
+def test_long_form_final_mode_quality_failure_ships_as_partial() -> None:
+    """Issue #19: aesthetic mode-recovery failure on the stitched final no
+    longer aborts an otherwise-successful render. Instead the job lands as
+    `done` with `partial=True` and a `final_quality_partial` flag on the
+    quality report, mirroring how short mode handles the same situation.
+    """
     job_id = "streamsvc006q"
     status = {}
     webhooks = []
@@ -450,15 +455,71 @@ def test_long_form_final_mode_quality_failure_aborts_success_status() -> None:
             ],
             "ocr": {"summary": {"max_overlap_ratio": 0.0, "max_edge_clip_ratio": 0.0}},
         }
+        stream_generate_and_render_job(
+            "Explain a low quality long-form final render",
+            job_id,
+            voiceover=False,
+            video_mode="lecture",
+            deps=deps,
+        )
+    finally:
+        stream_service.analyze_video_frames = original_analyze
+
+    assert status.get("status") == "done", status
+    assert status.get("partial") is True, status
+    assert status.get("video_quality", {}).get("final_quality_partial") is True, status
+    assert any(event == "render.complete" for event, _ in webhooks), webhooks
+    print(
+        "[OK] stream service - low-score long-form final quality ships as partial"
+    )
+
+
+def test_long_form_final_hard_failure_still_aborts_success_status() -> None:
+    """Issue #19 split: severe integrity failures (mostly-blank frames, very
+    low score, OCR overlap) still raise — those renders are unusable and we
+    don't want to ship them even as partial.
+    """
+    job_id = "streamsvc006qq"
+    status = {}
+    webhooks = []
+    dummy_video = _dummy_video("stream_service_stub_mode_quality_hard_fail.mp4")
+
+    deps = _install_stubs(
+        status,
+        webhooks,
+        lambda **kwargs: (
+            [str(dummy_video)],
+            kwargs["narrative_context"],
+            [],
+            {0: (str(dummy_video), True, "")},
+        ),
+    )
+    original_analyze = stream_service.analyze_video_frames
+    try:
+        stream_service.analyze_video_frames = lambda path: {
+            "ok": False,
+            "score": 20,
+            "warnings": ["8/12 sampled frames look blank"],
+            "sampled_frames": 12,
+            "frames": [
+                {"blank": True, "tiny_content": False, "cluttered": False}
+                for _ in range(8)
+            ]
+            + [
+                {"blank": False, "tiny_content": False, "cluttered": False}
+                for _ in range(4)
+            ],
+            "ocr": {"summary": {"max_overlap_ratio": 0.0, "max_edge_clip_ratio": 0.0}},
+        }
         try:
             stream_generate_and_render_job(
-                "Explain a low quality long-form final render",
+                "Explain a fully blank long-form final render",
                 job_id,
                 voiceover=False,
                 video_mode="lecture",
                 deps=deps,
             )
-            raise AssertionError("Expected long-form mode frame-quality failure")
+            raise AssertionError("Expected hard-failure RuntimeError")
         except RuntimeError as exc:
             assert "Final video failed frame-quality check" in str(exc)
     finally:
@@ -466,7 +527,7 @@ def test_long_form_final_mode_quality_failure_aborts_success_status() -> None:
 
     assert status.get("status") != "done", status
     assert not webhooks, webhooks
-    print("[OK] stream service - low-score long-form final quality cannot be marked done")
+    print("[OK] stream service - hard-failure long-form final still aborts")
 
 
 def test_long_form_final_duration_near_miss_is_padded() -> None:
@@ -1250,7 +1311,8 @@ def main() -> int:
     test_intro_outro_do_not_inflate_partial_scene_counts()
     test_final_video_integrity_failure_aborts_success_status()
     test_final_video_quality_failure_aborts_success_status()
-    test_long_form_final_mode_quality_failure_aborts_success_status()
+    test_long_form_final_mode_quality_failure_ships_as_partial()
+    test_long_form_final_hard_failure_still_aborts_success_status()
     test_long_form_final_duration_near_miss_is_padded()
     test_short_final_quality_failure_uses_fallback_render()
     test_short_final_fallback_preserves_scene_voiceover()

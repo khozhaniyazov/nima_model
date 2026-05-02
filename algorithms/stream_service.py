@@ -712,16 +712,32 @@ class GeneratedScene(Scene):
                 raise RuntimeError(
                     f"Fallback final video failed integrity check: {final_validation.error}"
                 )
-    elif not video_quality_report.get("ok", False) and (
-        video_quality_requires_hard_failure(video_quality_report)
-        or video_quality_requires_mode_recovery(
+    elif not video_quality_report.get("ok", False):
+        # Severe integrity failures (`requires_hard_failure`) still raise — the
+        # render is unusable and we have no recovery path that would help.
+        # Aesthetic-only `mode_recovery` failures, however, used to also raise
+        # — that left standard mode without any final-QA fallback (issue #19),
+        # so an otherwise-successful 8/8 render shipped as a `RuntimeError`
+        # instead of a deliverable. Now soft-fail with partial status: the
+        # user gets the rendered video plus a clear quality warning, the way
+        # short mode handles it via `_render_short_final_fallback`.
+        if video_quality_requires_hard_failure(video_quality_report):
+            raise RuntimeError(
+                "Final video failed frame-quality check: "
+                + "; ".join(video_quality_report.get("warnings") or ["unknown issue"])
+            )
+        if video_quality_requires_mode_recovery(
             video_quality_report, profile.mode, final=True
-        )
-    ):
-        raise RuntimeError(
-            "Final video failed frame-quality check: "
-            + "; ".join(video_quality_report.get("warnings") or ["unknown issue"])
-        )
+        ):
+            print(
+                f"[{job_id}] [VIDEO_QUALITY] {profile.mode} final QA below threshold; "
+                "shipping as partial render. "
+                + "; ".join(video_quality_report.get("warnings") or ["unknown issue"])
+            )
+            video_quality_report["final_quality_partial"] = True
+            video_quality_report["final_quality_reason"] = "; ".join(
+                video_quality_report.get("warnings") or ["mode_recovery threshold"]
+            )
 
     expected_audio_segments = _available_tts_segment_count(scene_tts)
     voiceover_audio_report = {
@@ -814,10 +830,20 @@ class GeneratedScene(Scene):
 
     # ── Step 8: Update job status ──────────────────────────────────────
     failed_count = sum(1 for r in scene_results if r["status"] == "failed")
+    final_quality_partial = bool(video_quality_report.get("final_quality_partial"))
     if failed_count > 0:
         terminal_status = {
             "status": "done",  # Pipeline completed, but some scenes failed
             "message": f"Done ({rendered_scene_count}/{len(scenes)} scenes)",
+            "partial": True,
+        }
+    elif final_quality_partial:
+        # Issue #19: aesthetic mode_recovery failure on the stitched final.
+        # The render is shipped, but flagged as partial so callers / the UI
+        # can surface "we delivered a video but it didn't fully pass QA".
+        terminal_status = {
+            "status": "done",
+            "message": "Video ready (final quality below target).",
             "partial": True,
         }
     else:
