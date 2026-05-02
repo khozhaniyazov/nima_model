@@ -126,11 +126,16 @@ STREAM_PROVIDER_USE_SUBPROCESS = (
 )
 
 # Request analysis knobs (used by algorithms.request_analysis)
-# Falls back to min(OPENAI_TIMEOUT, 60) but uses (OPENAI_TIMEOUT or 60) so an
-# operator who sets OPENAI_TIMEOUT=0 doesn't accidentally clamp planning to 10s.
+# Default bumped 60s -> 120s on 2026-05-02: live smokes against gpt-5.4 via
+# zjuapi.com timed out the planner (`planner generation exceeded 60s`) for
+# course/lecture modes where the plan is 11-18 KB. The per-scene streaming
+# timeout was already 120s (PR #13); keeping the planner at 60s asymmetrically
+# blocked the longer-form modes. See issue #21. Operators can still override
+# via REQUEST_ANALYSIS_TIMEOUT.
+# Uses (OPENAI_TIMEOUT or 120) so OPENAI_TIMEOUT=0 doesn't clamp planning to 10s.
 REQUEST_ANALYSIS_TIMEOUT = max(
     10,
-    int(os.getenv("REQUEST_ANALYSIS_TIMEOUT", str(min(OPENAI_TIMEOUT or 60, 60)))),
+    int(os.getenv("REQUEST_ANALYSIS_TIMEOUT", str(min(OPENAI_TIMEOUT or 120, 120)))),
 )
 REQUEST_ANALYSIS_USE_SUBPROCESS = (
     os.getenv("REQUEST_ANALYSIS_USE_SUBPROCESS", "true").lower() == "true"

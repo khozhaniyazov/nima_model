@@ -80,15 +80,24 @@ def test_request_analysis_timeout_is_int(monkeypatch):
 def test_request_analysis_timeout_handles_zero_openai_timeout(monkeypatch):
     """OPENAI_TIMEOUT=0 should not clamp planning timeout to floor (10s).
 
-    The fallback expression is `min(OPENAI_TIMEOUT or 60, 60)`; the `or 60`
-    guards against the degenerate `OPENAI_TIMEOUT=0` case, which would
-    otherwise produce a 10s planning timeout via `max(10, 0)`.
+    The fallback expression is `min(OPENAI_TIMEOUT or 120, 120)`; the
+    `or 120` guards against the degenerate `OPENAI_TIMEOUT=0` case, which
+    would otherwise produce a 10s planning timeout via `max(10, 0)`.
+
+    Default bumped from 60s to 120s on 2026-05-02 (issue #21) — course /
+    lecture plans are 11-18 KB and were timing out at 60s.
     """
     cfg = _reload_config(
         monkeypatch,
         {"USE_DATABASE": "false", "OPENAI_TIMEOUT": "0"},
     )
-    assert cfg.REQUEST_ANALYSIS_TIMEOUT == 60
+    assert cfg.REQUEST_ANALYSIS_TIMEOUT == 120
+
+
+def test_request_analysis_timeout_default_is_120(monkeypatch):
+    """Default planner timeout should match the per-scene 120s cap (issue #21)."""
+    cfg = _reload_config(monkeypatch, {"USE_DATABASE": "false"})
+    assert cfg.REQUEST_ANALYSIS_TIMEOUT == 120
 
 
 def test_edge_tts_voice_env_override(monkeypatch):

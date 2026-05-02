@@ -194,6 +194,43 @@ def test_course_fallback_plan_uses_modular_long_form_segments():
     print("[OK] request analysis - course fallback uses modular long-form plan")
 
 
+def test_coerce_completion_text_handles_proxy_shapes():
+    """Live planner failure mode (issue #21): proxies sometimes pre-unwrap
+    ``chat.completions.create`` and return a raw ``str`` or an OpenAI-shape
+    ``dict`` instead of a typed ``ChatCompletion``. Without this shim, the
+    planner silently dropped the response to ``""`` and surfaced as
+    ``Empty narrated plan response``.
+    """
+    coerce = request_analysis._coerce_completion_text
+
+    # Raw string: write through verbatim.
+    assert coerce("plan text") == "plan text"
+
+    # OpenAI-shape dict: extract choices[0].message.content.
+    assert (
+        coerce({"choices": [{"message": {"content": "from dict"}}]}) == "from dict"
+    )
+
+    # Bare {"content": "..."} fallback some proxies use.
+    assert coerce({"content": "bare"}) == "bare"
+
+    # Choice with .text instead of .message (legacy completion shape).
+    assert coerce({"choices": [{"text": "legacy"}]}) == "legacy"
+
+    # None / unknown shapes degrade to "" (planner then raises a clearer
+    # "Empty narrated plan response" up the stack rather than crashing).
+    assert coerce(None) == ""
+    assert coerce({"unrecognised": "shape"}) == ""
+
+    # Typed ChatCompletion-shaped object still works.
+    from types import SimpleNamespace
+
+    typed = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="typed"))]
+    )
+    assert coerce(typed) == "typed"
+
+
 if __name__ == "__main__":
     test_short_mode_moves_existing_question_to_the_end()
     test_standard_mode_strips_question_segments()
@@ -202,4 +239,5 @@ if __name__ == "__main__":
     test_heuristic_analysis_routes_algorithm_prompts_to_cs()
     test_short_fallback_plan_uses_social_visual_beats()
     test_course_fallback_plan_uses_modular_long_form_segments()
+    test_coerce_completion_text_handles_proxy_shapes()
     print("\nALL REQUEST ANALYSIS MODE CHECKS PASSED")
