@@ -985,6 +985,31 @@ def test_streaming_scene_prompt_includes_rag_patterns():
     print("[OK] streaming prompt - RAG patterns are injected into default path")
 
 
+def test_stream_system_msg_omits_language_lock_when_env_unset(monkeypatch):
+    monkeypatch.delenv("NIMA_LANGUAGE_LOCK", raising=False)
+    context = streaming.NarrativeContext.from_analysis(
+        "Explain anything",
+        {"domain": "math", "duration": 30},
+    )
+    msg = streaming._build_stream_system_msg(context)
+    assert "LANGUAGE LOCK" not in msg
+    assert msg.startswith("You are an expert Manim CE")
+    print("[OK] streaming system msg - no language lock prefix when env unset")
+
+
+def test_stream_system_msg_injects_language_lock_when_env_set(monkeypatch):
+    monkeypatch.setenv("NIMA_LANGUAGE_LOCK", "Kazakh (Қазақ тілі)")
+    context = streaming.NarrativeContext.from_analysis(
+        "Explain anything",
+        {"domain": "math", "duration": 30},
+    )
+    msg = streaming._build_stream_system_msg(context)
+    assert msg.startswith("LANGUAGE LOCK"), msg[:200]
+    assert "Kazakh (Қазақ тілі)" in msg
+    assert "Cold Open" in msg  # blacklist sample is included
+    print("[OK] streaming system msg - language lock prepended when env set")
+
+
 def test_short_scene_prompt_uses_phone_safe_rag_notes_not_wide_code():
     original_retrieve_patterns = streaming.retrieve_patterns
 
