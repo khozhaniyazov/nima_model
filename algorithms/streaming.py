@@ -26,6 +26,7 @@ Components:
 """
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -1469,7 +1470,28 @@ def _generate_non_streaming(
 
 def _build_stream_system_msg(context: NarrativeContext) -> str:
     """Build the system message for streaming generation."""
-    base = """\
+    language_lock = os.environ.get("NIMA_LANGUAGE_LOCK", "").strip()
+    language_block = ""
+    if language_lock:
+        language_block = (
+            f"LANGUAGE LOCK (NON-NEGOTIABLE, OVERRIDES EVERY OTHER RULE):\n"
+            f"- Every Text(), Tex(), MathTex() string in the generated code "
+            f"MUST be written in {language_lock}.\n"
+            f"- Every title, label, hint, summary, takeaway, and chapter marker "
+            f"MUST be in {language_lock}.\n"
+            f"- DO NOT output English captions like 'Cold Open', 'The Setup', "
+            f"'ray', 'straight angle', 'summary', 'rewind', 'looks settled', "
+            f"'locked anyway', etc. Translate them into {language_lock}.\n"
+            f"- The ONLY allowed non-{language_lock} tokens on screen are:\n"
+            f"    * single-letter math/geometry vertex names (A, B, C, D, E, "
+            f"O, P, Q, x, y, z), \n"
+            f"    * digits and degree/percent/math symbols (e.g. 60°, 180°, "
+            f"+, -, =, ÷, ×).\n"
+            f"- If a label name was historically English in the model's "
+            f"training data, REWRITE IT in {language_lock} before emitting.\n\n"
+        )
+
+    base = language_block + """\
 You are an expert Manim CE v0.18 code generator producing single scenes.
 You generate ONE scene at a time with full narrative context.
 
