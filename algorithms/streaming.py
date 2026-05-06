@@ -72,6 +72,7 @@ from algorithms.media_tools import (
     probe_media_duration_seconds,
     validate_video_file,
 )
+from algorithms.i18n import localize_scene_code
 from algorithms.overlap_detector import run_all_checks as detect_static_layout_risks
 from algorithms.rendering import cleanup_manim_partials, inject_manim_frame_config
 from algorithms.video_quality import (
@@ -3665,24 +3666,26 @@ def _make_standard_fallback_scene_code(
         for key in ("title", "description", "narration", "visual_description")
     ).lower()
     if "linear" in plan_text and any(token in plan_text for token in ("scan", "obvious", "one by one")):
-        return _make_standard_fallback_linear_scan_scene_code(scene_plan, context)
-    if any(token in plan_text for token in ("sorted", "order", "needs order")):
-        return _make_standard_fallback_sorted_order_scene_code(scene_plan, context)
-    if any(token in plan_text for token in ("payoff", "gap", "grow", "larger", "comparison count")):
-        return _make_standard_fallback_payoff_scene_code(scene_plan, context)
-    if any(token in plan_text for token in ("takeaway", "best use", "mental model", "end")):
-        return _make_standard_fallback_takeaway_scene_code(scene_plan, context)
-    if any(token in plan_text for token in ("race", "side by side", "together")):
-        return _make_standard_fallback_race_scene_code(scene_plan, context)
-    if any(token in plan_text for token in ("middle", "midpoint", "mechanism", "half")):
-        return _make_standard_fallback_window_scene_code(scene_plan, context)
-
-    variant = scene_index % 3
-    if variant == 1:
-        return _make_standard_fallback_race_scene_code(scene_plan, context)
-    if variant == 2:
-        return _make_standard_fallback_ladder_scene_code(scene_plan, context)
-    return _make_standard_fallback_window_scene_code(scene_plan, context)
+        code = _make_standard_fallback_linear_scan_scene_code(scene_plan, context)
+    elif any(token in plan_text for token in ("sorted", "order", "needs order")):
+        code = _make_standard_fallback_sorted_order_scene_code(scene_plan, context)
+    elif any(token in plan_text for token in ("payoff", "gap", "grow", "larger", "comparison count")):
+        code = _make_standard_fallback_payoff_scene_code(scene_plan, context)
+    elif any(token in plan_text for token in ("takeaway", "best use", "mental model", "end")):
+        code = _make_standard_fallback_takeaway_scene_code(scene_plan, context)
+    elif any(token in plan_text for token in ("race", "side by side", "together")):
+        code = _make_standard_fallback_race_scene_code(scene_plan, context)
+    elif any(token in plan_text for token in ("middle", "midpoint", "mechanism", "half")):
+        code = _make_standard_fallback_window_scene_code(scene_plan, context)
+    else:
+        variant = scene_index % 3
+        if variant == 1:
+            code = _make_standard_fallback_race_scene_code(scene_plan, context)
+        elif variant == 2:
+            code = _make_standard_fallback_ladder_scene_code(scene_plan, context)
+        else:
+            code = _make_standard_fallback_window_scene_code(scene_plan, context)
+    return localize_scene_code(code)
 
 
 def _make_standard_fallback_window_scene_code(
@@ -4472,6 +4475,12 @@ def _make_course_fallback_scene_code(
     scene_plan: dict, context: NarrativeContext
 ) -> str:
     """Deterministic lesson scenelet for course-mode reliability."""
+    return localize_scene_code(_make_course_fallback_scene_code_raw(scene_plan, context))
+
+
+def _make_course_fallback_scene_code_raw(
+    scene_plan: dict, context: NarrativeContext
+) -> str:
     if scene_plan.get("type") == "question" or "question" in _clean_plan_text(scene_plan.get("scene_role")).lower():
         return _make_course_question_fallback_scene_code(scene_plan, context)
 
@@ -4671,6 +4680,12 @@ def _make_lecture_fallback_scene_code(
     scene_plan: dict, context: NarrativeContext
 ) -> str:
     """Deterministic academic scenelet for lecture-mode reliability."""
+    return localize_scene_code(_make_lecture_fallback_scene_code_raw(scene_plan, context))
+
+
+def _make_lecture_fallback_scene_code_raw(
+    scene_plan: dict, context: NarrativeContext
+) -> str:
     if scene_plan.get("type") == "question" or "question" in _clean_plan_text(scene_plan.get("scene_role")).lower():
         return _make_lecture_question_fallback_scene_code(scene_plan, context)
 
@@ -5100,6 +5115,12 @@ def _make_short_fallback_scene_code(
     scene_plan: dict, context: NarrativeContext
 ) -> str:
     """Deterministic last-resort scene for strict short-mode reliability."""
+    return localize_scene_code(_make_short_fallback_scene_code_raw(scene_plan, context))
+
+
+def _make_short_fallback_scene_code_raw(
+    scene_plan: dict, context: NarrativeContext
+) -> str:
     title = _short_fallback_title(scene_plan, context)
     lines = _short_fallback_lines(scene_plan, context)
     bg = context.domain_state.get("background_color", "#0F1117")
