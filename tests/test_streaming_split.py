@@ -2470,6 +2470,89 @@ def test_standard_quality_recovery_keeps_usable_original_when_retry_fails(monkey
     print("[OK] streaming recovery - standard keeps usable original if retry fails")
 
 
+def test_standard_falls_back_to_deterministic_when_retry_and_original_are_bad(monkeypatch):
+    """When the LLM retry fails AND the original render is not recoverable,
+    the standard/course/lecture modes must still emit a usable deterministic
+    scene instead of returning None/False and reporting a scene failure."""
+    context = streaming.NarrativeContext.from_analysis(
+        "Draw a proof",
+        {"domain": "math", "duration": 240, "video_mode": "standard", "aspect": "16:9"},
+    )
+    context.domain_state["video_mode"] = "standard"
+    scene_plan = {
+        "title": "Worked Example",
+        "description": "Run a compact example with live numbers.",
+        "duration_hint": 30,
+    }
+
+    class ValidVideo:
+        ok = True
+
+    calls = {"fallback": 0}
+
+    monkeypatch.setattr(
+        streaming,
+        "_validate_scene_video",
+        lambda *args, **kwargs: (
+            False,
+            "scene needs mode-aware layout recovery: OCR overlap",
+        ),
+    )
+    monkeypatch.setattr(streaming, "validate_video_file", lambda *args, **kwargs: ValidVideo())
+    # Analyze returns severe quality → original is NOT recoverable.
+    monkeypatch.setattr(
+        streaming,
+        "analyze_video_frames",
+        lambda *args, **kwargs: {
+            "ok": False,
+            "score": 10,
+            "warnings": ["4/4 sampled frames look blank"],
+            "sampled_frames": 4,
+            "frames": [],
+        },
+    )
+    # LLM retry also fails.
+    monkeypatch.setattr(
+        streaming,
+        "_recover_render_failure",
+        lambda *args, **kwargs: (None, False, "retry produced bad pattern", context),
+    )
+
+    def fake_mode_fallback(*args, **kwargs):
+        calls["fallback"] += 1
+        return "deterministic_standard.mp4", True, "", context
+
+    monkeypatch.setattr(streaming, "_render_mode_fallback_scene", fake_mode_fallback)
+    monkeypatch.setattr(
+        streaming,
+        "_pad_scene_to_min_duration",
+        lambda path, *args, **kwargs: path + "_padded",
+    )
+    monkeypatch.setattr(streaming, "_should_pad_scene_duration", lambda ctx: True)
+
+    path, ok, err, _ = streaming._accept_or_recover_scene_render(
+        scene_num=4,
+        scene_plan=scene_plan,
+        context=context,
+        video_path="broken_scene.mp4",
+        success=True,
+        error_msg="",
+        filename="video_test",
+        job_id="job",
+        render_resolution=(1280, 720),
+        quality_flag="-ql",
+        fps=30,
+        scene_timeout_seconds=120,
+    )
+
+    assert ok is True, err
+    assert err == ""
+    assert path == "deterministic_standard.mp4_padded"
+    assert calls["fallback"] == 1
+    assert "accepted deterministic standard fallback" in scene_plan["_render_recovery_note"]
+    print("[OK] streaming recovery - standard falls back to deterministic when retry AND original are bad")
+
+
 def test_lecture_deterministic_fallback_is_valid_academic_manim_code():
     from algorithms.code_digest import validate_manim_code, validate_python_syntax
 

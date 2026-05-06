@@ -97,6 +97,18 @@ _KK: Mapping[str, str] = {
     "comparisons: 4": "салыстырулар: 4",
     "comparisons: 8": "салыстырулар: 8",
     "comparisons: 12": "салыстырулар: 12",
+    # Linear-scan suffix: ``" checks"`` fragment (from #29 follow-up note).
+    " checks": " тексеру",
+    " jumps": " секіру",
+    " steps": " қадам",
+    "linear: 12 checks": "сызықтық: 12 тексеру",
+    "linear: 16 checks": "сызықтық: 16 тексеру",
+    "binary: 4 checks": "екілік: 4 тексеру",
+    "binary: 4 jumps": "екілік: 4 секіру",
+    "binary: 5 jumps": "екілік: 5 секіру",
+    # Question/hook phrases occasionally emitted by the window-mode payoff.
+    # (Short connectors like "vs" / "and" / "or" intentionally NOT in the
+    # table — too easy to hit false positives on unrelated labels.)
     "One comparison deletes half the map": "Бір салыстыру картаның жартысын жояды",
     "linear search earns certainty one cell at a time": (
         "сызықтық іздеу бір-бірден сенім жинайды"
@@ -119,7 +131,6 @@ _KK: Mapping[str, str] = {
     "same target, different tempo": "бір нысан, басқа қарқын",
     "linear scan": "сызықтық шолу",
     "binary split": "екілік бөлу",
-    "binary: 4 jumps": "екілік: 4 секіру",
     "every question halves the uncertainty": "әр сұрақ белгісіздікті екіге бөледі",
     "16 candidates": "16 үміткер",
     "8 remain": "8 қалды",

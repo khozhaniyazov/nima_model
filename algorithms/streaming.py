@@ -5199,6 +5199,60 @@ class GeneratedScene(Scene):
 """
 
 
+def _render_mode_fallback_scene(
+    scene_plan: dict,
+    context: NarrativeContext,
+    scene_num: int,
+    filename: str,
+    job_id: str,
+    render_resolution: Optional[Tuple[int, int]],
+    quality_flag: str,
+    fps: int,
+    timeout_seconds: Optional[int],
+) -> Tuple[Optional[str], bool, str, NarrativeContext]:
+    """Last-resort deterministic render for a non-short mode.
+
+    Invoked when the LLM retry itself also fails (hygiene reject, syntax error,
+    or render error on the retried code). The deterministic helpers already
+    honour ``NIMA_LANGUAGE_LOCK`` via ``localize_scene_code``, so a recovered
+    scene still matches the target language.
+    """
+    mode = str(context.domain_state.get("video_mode") or "").lower()
+    if mode == "standard":
+        code = _make_standard_fallback_scene_code(scene_plan, context)
+    elif mode == "course":
+        code = _make_course_fallback_scene_code(scene_plan, context)
+    elif mode == "lecture":
+        code = _make_lecture_fallback_scene_code(scene_plan, context)
+    else:
+        return None, False, f"no deterministic fallback for mode {mode!r}", context
+
+    video_path, success, error = _render_single_scene(
+        code,
+        filename,
+        job_id,
+        scene_num,
+        render_resolution,
+        quality_flag,
+        fps,
+        timeout_seconds,
+    )
+    if not success or not video_path:
+        return None, False, error, context
+    valid, validation_error = _validate_scene_video(scene_num, video_path, mode=mode)
+    if not valid:
+        return video_path, False, validation_error, context
+    new_context = _update_context_from_scene(
+        context, code, f"[FALLBACK] {scene_plan.get('description', '')}"
+    )
+    _mark_scene_generation(
+        scene_plan,
+        f"deterministic_{mode}_fallback_render_recovery",
+        None,
+    )
+    return video_path, True, "", new_context
+
+
 def _render_short_fallback_scene(
     scene_plan: dict,
     context: NarrativeContext,
@@ -5507,7 +5561,8 @@ def _accept_or_recover_scene_render(
         print(f"[STREAM] Scene {scene_num} {scene_plan['_render_recovery_note']}")
         return accepted_path, True, "", context
 
-    if context.domain_state.get("video_mode") == "short":
+    current_mode = str(context.domain_state.get("video_mode") or "").lower()
+    if current_mode == "short":
         fallback_path, fallback_ok, fallback_err, context = _render_short_fallback_scene(
             scene_plan,
             context,
@@ -5528,6 +5583,34 @@ def _accept_or_recover_scene_render(
             )
             return fallback_path, True, "", context
         return fallback_path, False, fallback_err or error_msg, context
+    if current_mode in {"standard", "course", "lecture"}:
+        fallback_path, fallback_ok, fallback_err, context = _render_mode_fallback_scene(
+            scene_plan,
+            context,
+            scene_num,
+            filename,
+            job_id,
+            render_resolution,
+            quality_flag,
+            fps,
+            scene_timeout_seconds,
+        )
+        if fallback_ok and fallback_path:
+            if _should_pad_scene_duration(context):
+                fallback_path = _pad_scene_to_min_duration(
+                    fallback_path,
+                    float(scene_plan.get("duration_hint") or 0),
+                    fps=fps,
+                    scene_num=scene_num,
+                )
+            detail = (
+                f"accepted deterministic {current_mode} fallback after failed "
+                f"mode-aware recovery: " + (error_msg or "unknown")
+            )
+            scene_plan["_render_recovery_note"] = re.sub(r"\s+", " ", detail).strip()[:260]
+            print(f"[STREAM] Scene {scene_num} {scene_plan['_render_recovery_note']}")
+            return fallback_path, True, "", context
+        return None, False, fallback_err or error_msg, context
     return None, False, error_msg, context
 
 
