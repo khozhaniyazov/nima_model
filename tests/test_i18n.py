@@ -120,6 +120,17 @@ def test_standard_fallback_emits_kazakh_when_locked(monkeypatch):
     assert "Cold Open" not in code or 'Text("Cold Open"' not in code
 
 
+def test_suffix_fragments_are_translated(monkeypatch):
+    monkeypatch.setenv("NIMA_LANGUAGE_LOCK", "Kazakh (Қазақ тілі)")
+    code = (
+        'Text("linear: 12 checks", font_size=22)\n'
+        'Text("binary: 4 jumps", font_size=22)\n'
+    )
+    out = i18n.localize_scene_code(code)
+    assert 'Text("сызықтық: 12 тексеру"' in out
+    assert 'Text("екілік: 4 секіру"' in out
+
+
 def test_standard_fallback_emits_english_without_lock(monkeypatch):
     monkeypatch.delenv("NIMA_LANGUAGE_LOCK", raising=False)
     from algorithms import streaming
