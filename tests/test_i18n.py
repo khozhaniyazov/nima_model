@@ -68,6 +68,16 @@ def test_localize_scene_code_leaves_unknown_literals_alone(monkeypatch):
     assert i18n.localize_scene_code(code) == code
 
 
+def test_localize_scene_code_handles_trailing_punctuation(monkeypatch):
+    monkeypatch.setenv("NIMA_LANGUAGE_LOCK", "Kazakh (Қазақ тілі)")
+    # Blueprint beat_specs emit "Cold Open." (with a period) into the title.
+    # The table key is "Cold Open"; the post-processor should translate the
+    # stem and keep the trailing punctuation.
+    code = 'Text("Cold Open.", font_size=34)'
+    out = i18n.localize_scene_code(code)
+    assert 'Text("Күтпеген бастама.", font_size=34)' == out
+
+
 def test_localize_scene_code_preserves_quote_style(monkeypatch):
     monkeypatch.setenv("NIMA_LANGUAGE_LOCK", "Kazakh (Қазақ тілі)")
     code = "Text('Cold Open', font_size=34)"
