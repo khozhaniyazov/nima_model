@@ -76,6 +76,27 @@ _KK: Mapping[str, str] = {
     "remaining": "қалғаны",
     "keep right half": "оң жартысын қалдыр",
     "keep left half": "сол жартысын қалдыр",
+    # String-concatenation fragments observed in emitted fallback scenes
+    # (e.g. ``Text("target = " + str(value))`` → post-processor sees the
+    # literal ``"target = "`` alone).
+    "target = ": "нысан = ",
+    "mid = ": "орта = ",
+    "comparisons: ": "салыстырулар: ",
+    "remaining: ": "қалғаны: ",
+    "linear: ": "сызықтық: ",
+    "binary: ": "екілік: ",
+    # Concrete per-scene compositions produced by the window-mode template.
+    "8 < 12  ->  keep right half": "8 < 12  ->  оң жартысын қалдыр",
+    "target = 12": "нысан = 12",
+    "mid = 8": "орта = 8",
+    "mid = 12": "орта = 12",
+    "comparisons: 1    remaining: 16": "салыстырулар: 1    қалғаны: 16",
+    "comparisons: 2    remaining: 8": "салыстырулар: 2    қалғаны: 8",
+    "comparisons: 1": "салыстырулар: 1",
+    "comparisons: 2": "салыстырулар: 2",
+    "comparisons: 4": "салыстырулар: 4",
+    "comparisons: 8": "салыстырулар: 8",
+    "comparisons: 12": "салыстырулар: 12",
     "One comparison deletes half the map": "Бір салыстыру картаның жартысын жояды",
     "linear search earns certainty one cell at a time": (
         "сызықтық іздеу бір-бірден сенім жинайды"
@@ -236,8 +257,17 @@ def localize_scene_code(code: str, locale: str | None = None) -> str:
 
     def _sub(match: "re.Match[str]") -> str:
         body = match.group("body")
-        translated = table.get(body, body)
-        if translated == body:
+        translated = table.get(body)
+        if translated is None:
+            # Fallback: strip trailing ASCII punctuation (.,;:!?) and retry.
+            # Blueprint titles like "Cold Open." need to match "Cold Open".
+            stripped = body.rstrip(".,;:!? ")
+            if stripped and stripped != body:
+                found = table.get(stripped)
+                if found is not None:
+                    trailing = body[len(stripped):]
+                    translated = found + trailing
+        if translated is None or translated == body:
             return match.group(0)
         quote = match.group("quote")
         # Re-use the same quote style the template author picked.
