@@ -31,7 +31,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple, TYPE_CHECKING
 
