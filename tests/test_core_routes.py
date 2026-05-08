@@ -92,17 +92,58 @@ def test_generate_rate_limit_blocks_before_dispatch():
 
 def test_batch_validation_rejects_bad_prompt_lists():
     app, calls = _make_app()
+    client = app.test_client()
 
-    empty = app.test_client().post("/api/batch", json={"prompts": []})
-    too_many = app.test_client().post(
-        "/api/batch",
-        json={"prompts": ["x"] * 21},
-    )
+    empty = client.post("/api/batch", json={"prompts": []})
+    too_many = client.post("/api/batch", json={"prompts": ["x"] * 21})
 
     assert empty.status_code == 400
     assert too_many.status_code == 400
     assert calls["dispatch"] == 0
     print("[OK] core routes — batch prompt list validation blocks dispatch")
+
+
+def test_batch_validation_rejects_malformed_items_before_dispatch():
+    """Every item in /api/batch must be validated before we kick off any
+    background work — otherwise submit_batch_jobs silently drops bad items
+    and the client sees a partial response it can't reconcile."""
+    app, calls = _make_app()
+    client = app.test_client()
+
+    cases = [
+        ["good", ""],                               # empty string item
+        ["good", "   "],                            # whitespace-only item
+        ["good", 42],                                # wrong type
+        ["good", {"topic": "no-prompt-field"}],     # dict missing 'prompt'
+        ["good", {"prompt": 42}],                   # 'prompt' is not a string
+        ["good", {"prompt": "x" * 5001}],          # exceeds per-prompt cap
+    ]
+
+    for bad_payload in cases:
+        response = client.post("/api/batch", json={"prompts": bad_payload})
+        assert response.status_code == 400, (bad_payload, response.get_json())
+        assert "error" in response.get_json()
+
+    assert calls["dispatch"] == 0
+    print("[OK] core routes — batch item validation blocks dispatch")
+
+
+def test_batch_accepts_mixed_valid_items_and_dispatches_once_per_item():
+    """Well-formed batches must still pass through to submit_batch_jobs."""
+    app, calls = _make_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/batch",
+        json={"prompts": ["first", {"prompt": "second"}]},
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert "batch_id" in body
+    assert len(body["jobs"]) == 2
+    assert calls["dispatch"] == 2
+    print("[OK] core routes — batch dispatches one background job per valid item")
 
 
 def test_health_counts_queued_jobs_as_active():
