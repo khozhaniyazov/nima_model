@@ -3,6 +3,8 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 from psycopg2.extras import RealDictCursor
 
+from api_routes.admin_auth import require_admin
+
 
 VIDEO_SORT_COLUMNS = {
     "created_at": "v.created_at",
@@ -374,6 +376,7 @@ def create_media_blueprint(
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/videos/cdn-url", methods=["POST"])
+    @require_admin
     def set_video_cdn_url():
         """
         Manually set CDN URL for a video (admin endpoint).

@@ -1,10 +1,13 @@
 from flask import Blueprint, jsonify, request
 
+from api_routes.admin_auth import require_admin
+
 
 def create_webhooks_blueprint(*, db, request_json_object):
     bp = Blueprint("webhooks_api", __name__)
 
     @bp.route("/api/webhooks", methods=["POST"])
+    @require_admin
     def api_create_webhook():
         """Register a new webhook."""
         if not db or not db.available:
@@ -25,6 +28,7 @@ def create_webhooks_blueprint(*, db, request_json_object):
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/webhooks", methods=["GET"])
+    @require_admin
     def api_list_webhooks():
         """List registered webhooks."""
         if not db or not db.available:
@@ -43,6 +47,7 @@ def create_webhooks_blueprint(*, db, request_json_object):
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/webhooks/<webhook_id>", methods=["DELETE"])
+    @require_admin
     def api_delete_webhook(webhook_id):
         """Delete a webhook."""
         if not db or not db.available:

@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify
 from psycopg2.extras import Json, RealDictCursor
 
+from api_routes.admin_auth import require_admin
+
 
 def create_templates_blueprint(db, request_json_object):
     bp = Blueprint("templates_api", __name__)
@@ -84,6 +86,7 @@ def create_templates_blueprint(db, request_json_object):
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/templates/pending", methods=["GET"])
+    @require_admin
     def api_pending_templates():
         """List pending templates (admin)."""
         if not db or not db.available:
@@ -102,6 +105,7 @@ def create_templates_blueprint(db, request_json_object):
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/templates/<int:template_id>/approve", methods=["PUT"])
+    @require_admin
     def api_approve_template(template_id):
         """Approve a user template (admin)."""
         if not db or not db.available:
@@ -126,6 +130,7 @@ def create_templates_blueprint(db, request_json_object):
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/templates/<int:template_id>", methods=["DELETE"])
+    @require_admin
     def api_delete_template(template_id):
         """Delete a user template (admin)."""
         if not db or not db.available:
