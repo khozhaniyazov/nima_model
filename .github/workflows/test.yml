@@ -1,5 +1,15 @@
 name: Tests and Lint
 
+# GitHub Actions minutes are exhausted for this account and billing is
+# intentionally off, so every scheduled run dies in 3-7s with BlobNotFound on
+# log fetch. Every job here is gated on the `ENABLE_CI` repo variable so they
+# report "Skipped" (green) instead of "Failed" (red). Re-enable later in one
+# click: Settings → Secrets and variables → Actions → Variables → set
+# ENABLE_CI=true.
+#
+# Local CI surface is unchanged: run `ruff check .` and
+# `python -m pytest tests/ -q` before opening or merging a PR.
+
 on:
   push:
     branches: [main, develop]
@@ -14,6 +24,7 @@ jobs:
   test:
     name: Pytest
     runs-on: ubuntu-latest
+    if: vars.ENABLE_CI == 'true'
     env:
       USE_DATABASE: 'false'
       OPENAI_API_KEY: 'test'
@@ -53,6 +64,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    if: vars.ENABLE_CI == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -115,7 +127,7 @@ jobs:
   benchmark:
     name: Benchmark (manual)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: vars.ENABLE_CI == 'true' && github.event_name == 'workflow_dispatch'
     env:
       USE_DATABASE: 'false'
       OPENAI_API_KEY: 'test'
