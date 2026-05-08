@@ -78,7 +78,7 @@ MAX_RENDER_RETRIES=3
 
 # Streaming + TTS
 ENABLE_VOICEOVER=true
-TTS_VOICE=en-US-AndrewNeural
+EDGE_TTS_VOICE=en-US-GuyNeural   # override per-voice; default matches config.TTS_VOICE
 
 # Throughput
 BACKGROUND_MAX_WORKERS=4
@@ -142,4 +142,8 @@ Outputs land in `outputs/`; intermediate Manim media in `media/`. Both are gitig
 - Use a real WSGI server (gunicorn / waitress) in production — `app.py` runs the dev server.
 - See `docs/BIGGER-PICTURE.md` and `.planning/phases/` for roadmap and phase plans.
 
-**Example output:** ![Narrated demonstration](./example.mp4)
+**Example output:**
+
+![Narrated demonstration](./example.gif)
+
+Full narrated MP4: [example.mp4](./example.mp4)
