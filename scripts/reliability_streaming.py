@@ -3,9 +3,9 @@
 Run a local reliability sweep for the streaming pipeline.
 
 Usage:
-  python test_streaming_reliability.py
-  python test_streaming_reliability.py --count 10 --host http://localhost:5000
-  python test_streaming_reliability.py --voiceover
+  python scripts/reliability_streaming.py
+  python scripts/reliability_streaming.py --count 10 --host http://localhost:5000
+  python scripts/reliability_streaming.py --voiceover
 """
 
 from __future__ import annotations
