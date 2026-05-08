@@ -38,9 +38,9 @@ if USE_DATABASE and not DB_CONNECTION_STRING:
     )
 
 # ── Render pipeline ───────────────────────────────────────────────────────────
-MAX_GENERATION_ATTEMPTS = 2  # AI generation retries
-MAX_RENDER_RETRIES = 3  # manim render retries (with LLM error-fix between each)
-RENDER_TIMEOUT_SECONDS = 900  # 15 min max per render
+MAX_GENERATION_ATTEMPTS = int(os.environ.get("MAX_GENERATION_ATTEMPTS", "2"))  # AI generation retries
+MAX_RENDER_RETRIES = int(os.environ.get("MAX_RENDER_RETRIES", "3"))  # manim render retries (with LLM error-fix between each)
+RENDER_TIMEOUT_SECONDS = int(os.environ.get("RENDER_TIMEOUT_SECONDS", "900"))  # 15 min max per render
 FAST_PIPELINE = os.environ.get("FAST_PIPELINE", "false").lower() == "true"
 DRAFT_PIPELINE = (
     os.environ.get("DRAFT_PIPELINE", "false").lower() == "true"
@@ -55,9 +55,9 @@ EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", TTS_VOICE)  # override per-segment 
 ENABLE_VOICEOVER = os.environ.get("ENABLE_VOICEOVER", "true").lower() == "true"
 
 # ── Rate Limiting ────────────────────────────────────────────────────────────
-RATE_LIMIT_ENABLED = True
-RATE_LIMIT_REQUESTS = 10  # requests per window
-RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true"
+RATE_LIMIT_REQUESTS = int(os.environ.get("RATE_LIMIT_REQUESTS", "10"))  # requests per window
+RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
 
 # ── CDN Configuration ──────────────────────────────────────────────────────
 CDN_BASE_URL = os.getenv("CDN_BASE_URL", "")  # e.g., "https://cdn.example.com/videos"
