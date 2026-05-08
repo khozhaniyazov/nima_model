@@ -8,9 +8,17 @@ visual anchor, alternate explanation with payoff, and avoid question pauses.
 from __future__ import annotations
 
 import copy
-import json
 import re
 from typing import Any
+
+from algorithms.mode_helpers import (
+    clean_text as _clean_text,
+    has_motion,
+    looks_generic,
+    positive_int as _positive_int,
+    raw_plan_segments as _raw_plan_segments,
+    text_blob as _text_blob,
+)
 
 
 STANDARD_TARGET_SCENES = 8
@@ -59,25 +67,6 @@ VISUAL_MOTION_WORDS = {
 }
 
 
-def _clean_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
-def _positive_int(value: Any, default: int) -> int:
-    try:
-        parsed = int(float(value))
-    except (TypeError, ValueError):
-        parsed = int(default)
-    return max(1, parsed)
-
-
-def _text_blob(value: Any) -> str:
-    try:
-        return json.dumps(value, ensure_ascii=True).lower()
-    except TypeError:
-        return str(value or "").lower()
-
-
 def _topic_from(prompt: str, analysis: dict | None) -> str:
     analysis = analysis or {}
     prompt_topic = ""
@@ -111,29 +100,20 @@ def _topic_from(prompt: str, analysis: dict | None) -> str:
     return _clean_text(topic).strip(" .,:;-") or "the concept"
 
 
+_MOTION_FIELDS = (
+    "visual_description",
+    "animation",
+    "animation_steps",
+    "description",
+)
+
+
 def _has_visual_motion(segment: dict) -> bool:
-    blob = _text_blob(
-        [
-            segment.get("visual_description"),
-            segment.get("animation"),
-            segment.get("animation_steps"),
-            segment.get("description"),
-        ]
-    )
-    return sum(1 for word in VISUAL_MOTION_WORDS if word in blob) >= 2
+    return has_motion(segment, fields=_MOTION_FIELDS, words=VISUAL_MOTION_WORDS)
 
 
 def _looks_generic(segment: dict) -> bool:
-    blob = _text_blob(segment)
-    return any(phrase in blob for phrase in GENERIC_STANDARD_PHRASES)
-
-
-def _raw_plan_segments(plan_data: dict) -> list[dict]:
-    for key in ("segments", "scenes", "beats"):
-        items = [item for item in plan_data.get(key, []) if isinstance(item, dict)]
-        if items:
-            return items
-    return []
+    return looks_generic(segment, GENERIC_STANDARD_PHRASES)
 
 
 def standard_plan_is_thin(plan_data: dict) -> bool:

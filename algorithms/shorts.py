@@ -9,9 +9,15 @@ keeping the general streaming renderer reusable.
 from __future__ import annotations
 
 import copy
-import json
 import re
 from typing import Any
+
+from algorithms.mode_helpers import (
+    clean_text as _clean_text,
+    has_motion,
+    looks_generic,
+    text_blob as _text_blob,
+)
 
 
 SHORT_TARGET_SCENES = 5
@@ -57,17 +63,6 @@ GENERIC_SHORT_PHRASES = {
     "explain visually",
     "introduce the concept",
 }
-
-
-def _clean_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
-def _text_blob(value: Any) -> str:
-    try:
-        return json.dumps(value, ensure_ascii=True).lower()
-    except TypeError:
-        return str(value or "").lower()
 
 
 def _topic_from(prompt: str, analysis: dict | None) -> str:
@@ -402,22 +397,21 @@ def build_short_social_segments(
     ]
 
 
+_SHORT_MOTION_FIELDS = (
+    "visual_description",
+    "animation",
+    "animation_steps",
+    "beats",
+    "description",
+)
+
+
 def _has_motion_language(segment: dict) -> bool:
-    blob = _text_blob(
-        [
-            segment.get("visual_description"),
-            segment.get("animation"),
-            segment.get("animation_steps"),
-            segment.get("beats"),
-            segment.get("description"),
-        ]
-    )
-    return sum(1 for word in MOTION_WORDS if word in blob) >= 2
+    return has_motion(segment, fields=_SHORT_MOTION_FIELDS, words=MOTION_WORDS)
 
 
 def _looks_generic(segment: dict) -> bool:
-    blob = _text_blob(segment)
-    return any(phrase in blob for phrase in GENERIC_SHORT_PHRASES)
+    return looks_generic(segment, GENERIC_SHORT_PHRASES)
 
 
 def _select_short_segments(raw_segments: list[dict], social_segments: list[dict]) -> list[dict]:
