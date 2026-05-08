@@ -168,6 +168,7 @@ def _register_lti(app):
 ADMIN_ROUTES = [
     # (register_fn, method, path)
     (_register_api_keys, "POST", "/api/keys"),
+    (_register_api_keys, "DELETE", "/api/keys/abc"),
     (_register_templates, "GET", "/api/templates/pending"),
     (_register_templates, "PUT", "/api/templates/1/approve"),
     (_register_templates, "DELETE", "/api/templates/1"),

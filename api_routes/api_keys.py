@@ -104,9 +104,16 @@ def create_api_keys_blueprint(*, db, check_rate_limit, request_json_object):
             return jsonify({"error": str(e)}), 500
 
     @bp.route("/api/keys/<key_id>", methods=["DELETE"])
-    @require_api_key
+    @require_admin
     def api_revoke_api_key(key_id):
-        """Revoke an API key."""
+        """Revoke an API key (admin).
+
+        Previously gated only by ``require_api_key``. Because the legacy
+        ``require_api_key`` decorator accepts *any* non-revoked key and
+        performs no ownership check, any holder of any API key could revoke
+        any other key — a denial-of-service / lockout primitive. Promoting
+        this to admin-only matches ``POST /api/keys`` and closes that gap.
+        """
         if not db or not db.available:
             return jsonify({"error": "Database not available"}), 503
 
