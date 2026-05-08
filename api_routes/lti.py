@@ -47,6 +47,8 @@ from urllib.parse import urlencode
 
 from flask import Blueprint, jsonify, request
 
+from api_routes.admin_auth import require_admin
+
 
 def _lti_enabled() -> bool:
     """Return whether the LTI blueprint has been explicitly opted into.
@@ -228,6 +230,7 @@ def create_lti_blueprint(*, db, request_json_object, get_job_status):
 
     @bp.route("/api/lti/platforms", methods=["POST"])
     @_require_lti_enabled
+    @require_admin
     def api_register_lti_platform():
         """Register a new LTI platform (admin).
 

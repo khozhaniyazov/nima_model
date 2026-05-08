@@ -4,6 +4,8 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request
 
+from api_routes.admin_auth import require_admin
+
 
 def create_api_keys_blueprint(*, db, check_rate_limit, request_json_object):
     bp = Blueprint("api_keys", __name__)
@@ -45,6 +47,7 @@ def create_api_keys_blueprint(*, db, check_rate_limit, request_json_object):
         return decorated
 
     @bp.route("/api/keys", methods=["POST"])
+    @require_admin
     def api_create_api_key():
         """Create a new API key (admin)."""
         if not db or not db.available:
