@@ -15,7 +15,7 @@
   - missing section cleanup between comment-delimited sections
   - long construct() complexity without lifecycle helpers
   - stale `.copy()` usage where originals are not removed
-- Deterministic plan scaffolding (v1): `algorithms/plan/*` and `layout/engine.py`.
+- Deterministic plan scaffolding (v1): `algorithms/plan/*` (compiler + schema).
 
 ### Changed
 - Upgraded injected layout helpers (`LAYOUT_HELPERS`) with explicit section lifecycle tools.
