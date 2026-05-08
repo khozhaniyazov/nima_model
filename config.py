@@ -19,6 +19,15 @@ GENERATION_MODEL = os.getenv(
 FAST_MODEL = os.getenv(
     "FAST_MODEL", "gpt-5.2-codex"
 )  # light tasks (analysis, fix triage)
+# Fallback model used by algorithms.ai_functions when the primary endpoint
+# returns a 524 gateway timeout. Defaults to OpenAI's gpt-4o-mini because
+# it has historically been the most reliable rescue path for this repo;
+# override via LLM_FALLBACK_MODEL / LLM_FALLBACK_BASE_URL / LLM_FALLBACK_API_KEY.
+LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-4o-mini")
+LLM_FALLBACK_BASE_URL = os.getenv(
+    "LLM_FALLBACK_BASE_URL", "https://api.openai.com/v1"
+)
+LLM_FALLBACK_API_KEY = os.getenv("LLM_FALLBACK_API_KEY") or OPENAI_API_KEY
 
 # ── Filesystem ───────────────────────────────────────────────────────────────
 MANIM_SCRIPTS = Path(os.environ.get("MANIM_SCRIPTS", "C:/temp/manim_scripts"))

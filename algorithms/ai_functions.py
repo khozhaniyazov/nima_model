@@ -19,13 +19,17 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, GENERATION_MODEL, FAST_MODEL
+from config import (
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    GENERATION_MODEL,
+    FAST_MODEL,
+    LLM_FALLBACK_API_KEY,
+    LLM_FALLBACK_BASE_URL,
+    LLM_FALLBACK_MODEL,
+)
 from algorithms.error_parser import parse_manim_error, format_error_for_prompt
 from RAG.RAG_system import retrieve_golden_example
-
-# Fallback models if primary fails
-FALLBACK_MODEL = "gpt-4o-mini"
-FALLBACK_BASE_URL = "https://api.openai.com/v1"
 
 client = OpenAI(
     api_key=OPENAI_API_KEY,
@@ -33,10 +37,11 @@ client = OpenAI(
     timeout=60.0,
 )
 
-# Fallback client for when primary fails
+# Fallback client used when the primary endpoint returns a 524 gateway
+# timeout. All three knobs are config-driven (see LLM_FALLBACK_* in config).
 fallback_client = OpenAI(
-    api_key=OPENAI_API_KEY,
-    base_url=FALLBACK_BASE_URL,
+    api_key=LLM_FALLBACK_API_KEY,
+    base_url=LLM_FALLBACK_BASE_URL,
     timeout=60.0,
 )
 
@@ -83,20 +88,21 @@ def _llm_text_with_retry(prompt_messages, model: str, max_retries: int = 3) -> s
             error_str = str(e)
             last_error = e
 
-            # Check for 524 error - try fallback model
+            # Check for 524 error - try fallback model (one attempt only).
             if "524" in error_str or "bad_response_status_code" in error_str:
                 if not used_fallback:
                     print("[LLM] Primary model failed with 524, trying fallback...")
+                    used_fallback = True
                     try:
-                        # Try with fallback client
                         response = fallback_client.chat.completions.create(
-                            model=FALLBACK_MODEL,
+                            model=LLM_FALLBACK_MODEL,
                             messages=prompt_messages,
                         )
                         return response.choices[0].message.content
                     except Exception as fallback_error:
                         print(f"[LLM] Fallback also failed: {fallback_error}")
-                        used_fallback = False  # Reset for retries
+                        # Keep used_fallback=True: don't thrash the fallback
+                        # endpoint on every subsequent 524 in this retry loop.
 
             wait_time = (2**attempt) * 2
             print(f"[LLM] Attempt {attempt + 1}/{max_retries} failed: {e}")
