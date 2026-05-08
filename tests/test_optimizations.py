@@ -50,7 +50,6 @@ def test_config_flags():
     assert is_fast_full == False, "is_fast should be False for FULL"
     print("  [OK] is_fast calculation correct for all modes")
 
-    return True
 
 
 def test_render_retries_in_fast_mode():
@@ -88,7 +87,6 @@ def test_render_retries_in_fast_mode():
     )
     print("  [OK] FULL mode uses MAX_RENDER_RETRIES")
 
-    return True
 
 
 # ============================================================================
@@ -130,7 +128,6 @@ def test_timing_logs_present():
     )
     print(f"  [OK] All {len(timing_markers)} timing markers present")
 
-    return True
 
 
 # ============================================================================
@@ -168,7 +165,6 @@ def test_validations_skipped_in_fast_mode():
     assert "overlap_warnings = []" in src, "Overlap detection not skipped"
     print("  [OK] Overlap detection skipped")
 
-    return True
 
 
 def test_review_uses_fast_model():
@@ -190,7 +186,6 @@ def test_review_uses_fast_model():
     )
     print("  [OK] fix_render_error uses FAST_MODEL")
 
-    return True
 
 
 # ============================================================================
@@ -225,7 +220,6 @@ def test_rag_caching():
     assert t2_time < 0.01, f"Cache not working: {t2_time}s (expected < 0.01s)"
     print(f"  [OK] RAG caching works ({t1_time:.4f}s -> {t2_time * 1000:.2f}ms)")
 
-    return True
 
 
 # ============================================================================
@@ -249,7 +243,6 @@ def test_tts_parallel():
     assert "max_workers=min(len(tasks), 8)" in src, "Worker count not optimized"
     print("  [OK] Worker count optimized (min 8)")
 
-    return True
 
 
 # ============================================================================
@@ -299,7 +292,6 @@ def test_render_flags():
     assert short_profile.render_resolution == (720, 1280), "Short mode is not vertical"
     print("  [OK] Profile quality flags and short resolution correct")
 
-    return True
 
 
 def test_draft_mode_flags():
@@ -323,7 +315,6 @@ def test_draft_mode_flags():
     assert fast.fps == 15, "FAST should use 15 fps"
     print("  [OK] FAST uses 15 fps")
 
-    return True
 
 
 # ============================================================================
@@ -365,7 +356,6 @@ def test_backward_compatibility():
     assert config.MAX_RENDER_RETRIES == 3, "Default MAX_RENDER_RETRIES should be 3"
     print("  [OK] Default values correct")
 
-    return True
 
 
 # ============================================================================
@@ -389,7 +379,6 @@ def test_both_flags_enabled():
     assert is_fast == True, "is_fast should be True when either flag is True"
     print("  [OK] Both flags enabled correctly treated as fast mode")
 
-    return True
 
 
 def test_invalid_prompt_handling():
@@ -404,7 +393,6 @@ def test_invalid_prompt_handling():
     assert "try:" in src, "Try blocks present"
     print("  [OK] Exception handling present")
 
-    return True
 
 
 def test_database_disabled():
@@ -420,7 +408,6 @@ def test_database_disabled():
     assert config.USE_DATABASE == False, "USE_DATABASE should be False"
     print("  [OK] Database disabled works")
 
-    return True
 
 
 # ============================================================================
@@ -455,11 +442,8 @@ def run_all_tests():
 
     for name, test_func in tests:
         try:
-            if test_func():
-                passed += 1
-            else:
-                failed += 1
-                print(f"  [FAIL] {name}")
+            test_func()
+            passed += 1
         except Exception as e:
             failed += 1
             print(f"  [ERROR] {name}: {e}")
