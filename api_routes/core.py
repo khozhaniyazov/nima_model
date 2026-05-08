@@ -166,6 +166,54 @@ def create_core_blueprint(
         if len(prompts_data) > 20:
             return jsonify({"error": "Maximum 20 prompts per batch"}), 400
 
+        # Validate every item up-front so a single malformed entry
+        # (empty string, wrong type, missing 'prompt' key) can't silently
+        # get dropped by submit_batch_jobs and produce a partial response
+        # that the client has no way to reconcile.
+        for index, item in enumerate(prompts_data):
+            if isinstance(item, dict):
+                prompt_value = item.get("prompt")
+                if prompt_value is None:
+                    return jsonify(
+                        {
+                            "error": (
+                                f"prompts[{index}] must include a 'prompt' field"
+                            )
+                        }
+                    ), 400
+                if not isinstance(prompt_value, str):
+                    return jsonify(
+                        {
+                            "error": (
+                                f"prompts[{index}].prompt must be a string"
+                            )
+                        }
+                    ), 400
+                prompt_text = prompt_value.strip()
+            elif isinstance(item, str):
+                prompt_text = item.strip()
+            else:
+                return jsonify(
+                    {
+                        "error": (
+                            f"prompts[{index}] must be a string or object with 'prompt'"
+                        )
+                    }
+                ), 400
+
+            if not prompt_text:
+                return jsonify(
+                    {"error": f"prompts[{index}] must be a non-empty prompt"}
+                ), 400
+            if len(prompt_text) > 5000:
+                return jsonify(
+                    {
+                        "error": (
+                            f"prompts[{index}] exceeds the 5000-char prompt limit"
+                        )
+                    }
+                ), 400
+
         batch_id, jobs = submit_batch_jobs(
             prompts_data,
             deps=submission_deps,
