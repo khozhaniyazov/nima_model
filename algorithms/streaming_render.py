@@ -22,11 +22,7 @@ moved objects — including tests that set
 """
 from __future__ import annotations
 
-import os
 import subprocess
-import tempfile
-import time
-import uuid
 from pathlib import Path
 from typing import Optional, Tuple, TYPE_CHECKING
 
@@ -58,7 +54,6 @@ from algorithms.streaming_validation import (
 )
 from algorithms.video_quality import (
     analyze_video_frames,
-    short_video_quality_requires_fallback,
     video_quality_requires_hard_failure,
     video_quality_requires_mode_recovery,
 )
