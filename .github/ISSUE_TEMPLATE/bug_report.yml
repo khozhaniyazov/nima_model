@@ -53,7 +53,7 @@ body:
         - Manim version (`manim --version`)
         - ffmpeg version (`ffmpeg -version | head -1`)
         - NIMA commit SHA (`git rev-parse --short HEAD`)
-      render: text
+      render: shell
     validations:
       required: true
 
