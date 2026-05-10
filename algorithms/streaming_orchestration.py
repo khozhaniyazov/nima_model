@@ -37,7 +37,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from config import (
-    MAX_RENDER_RETRIES,
     RENDER_TIMEOUT_SECONDS,
     STREAM_PARALLEL_RENDERS,
 )
@@ -955,8 +954,10 @@ def stream_render_scenes(
 
         # ── Start rendering this scene in background ───────────────────
         print(f"[STREAM] Starting render for scene {scene_num} in background")
+        # Route through _s() so tests that monkey-patch
+        # ``streaming._render_single_scene`` still intercept the call.
         future = render_executor.submit(
-            _render_single_scene,
+            _s()._render_single_scene,
             code,
             filename,
             job_id,
