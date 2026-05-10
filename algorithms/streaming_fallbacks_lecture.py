@@ -9,17 +9,19 @@ Callers reach these via ``algorithms.streaming_fallbacks`` (which re-exports
 every name for back-compat) or via ``algorithms.streaming`` (the tests and
 monkeypatch surface).
 
-Module-load contract: leaf module. MUST NOT import ``algorithms.streaming``
-at module load time — ``streaming_fallbacks`` imports from here, and
-``streaming`` imports from ``streaming_fallbacks``. Any helper living in
-``algorithms.streaming`` must be imported lazily inside the function body.
+Module-load contract: true leaf module. Shared helpers are imported from
+``streaming_fallbacks_core`` (never from the ``streaming_fallbacks`` shim,
+which would create a cycle because the shim re-exports this module).
+``algorithms.streaming`` is imported lazily inside the function bodies
+where it's needed — nothing reaches ``streaming`` at module load time.
+This leaf is safe to cold-import standalone.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from algorithms.i18n import localize_scene_code
-from algorithms.streaming_fallbacks import (
+from algorithms.streaming_fallbacks_core import (
     _clean_plan_text,
 )
 
