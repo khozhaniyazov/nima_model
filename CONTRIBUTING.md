@@ -71,7 +71,7 @@ The repository does not currently run hosted CI (GitHub Actions). `ruff check .`
 ## Architecture rules (enforced by review)
 
 - **`app.py` is a thin Flask factory.** Business logic belongs in `algorithms/` and HTTP concerns in `api_routes/`. Don't grow `app.py`.
-- **`config.py` is the only env reader.** Other modules import constants from `config`. New env-driven knobs go in `config.py` first, then get imported where needed.
+- **`config.py` is the primary env reader.** Other modules import constants from `config`. New env-driven knobs go in `config.py` first, then get imported where needed. The documented exception is `NIMA_LANGUAGE_LOCK`, which is read at call-time in `algorithms/i18n.py` and `algorithms/streaming_providers.py` so per-request language switches don't require a process restart — only follow that pattern if you need the same runtime-mutable behaviour.
 - **Tests under `tests/`.** Dev / reliability scripts under `scripts/`. Design docs under `docs/`. Phase plans under `.planning/phases/NN-name/`.
 - **Never commit secrets.** `.env` is gitignored; defaults in `config.py` must be empty for credential-shaped values. If `USE_DATABASE=true`, `DB_CONNECTION_STRING` is mandatory and `config.py` will fail fast at import time.
 

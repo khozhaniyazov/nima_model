@@ -26,6 +26,19 @@ cp .env.example .env          # fill in OPENAI_API_KEY at minimum
 python app.py                 # Flask API on http://localhost:5000
 ```
 
+> **Linux / macOS users:** NIMA's `MANIM_SCRIPTS` and `OUTPUTS` defaults are Windows paths (`C:/temp/...`). Add these to your `.env` before first run:
+>
+> ```
+> MANIM_SCRIPTS=/tmp/manim_scripts
+> OUTPUTS=/tmp/outputs
+> ```
+>
+> Optionally pull the 3Blue1Brown RAG corpus (improves golden-example retrieval; skip for a leaner setup):
+>
+> ```bash
+> git submodule update --init --recursive
+> ```
+
 Frontend (optional — Next.js dashboard + prompt UI):
 
 ```bash
@@ -123,10 +136,11 @@ CI note: the repo currently runs local-checks-only (see CONTRIBUTING). `ruff che
 
 ## Known limitations
 
-- **Standard-mode final-QA hard-fail ([#19](https://github.com/khozhaniyazov/nima_model/issues/19))** — a single bad final-QA roll-up after all 8 scenes render successfully can still raise `RuntimeError` instead of recovering. Short mode has a recovery path; standard/course/lecture don't yet. Track in #19.
-- **First-attempt discard ([#20](https://github.com/khozhaniyazov/nima_model/issues/20))** — every mode's first LLM scene attempt is frequently discarded by the static layout gate and falls back to the deterministic renderer. The surgical-retry path from PR #7 exists but doesn't fire as often as it should.
-- **Windows-first defaults** — `MANIM_SCRIPTS` / `OUTPUTS` default to `C:/temp/...`. Override via `.env` on Linux/macOS.
-- **LTI 1.3 is feature-flagged off** — the current implementation decodes id_tokens without signature verification (see `api_routes/lti.py` + issue #43). Do not enable in production.
+- **Windows-first defaults** — `MANIM_SCRIPTS` / `OUTPUTS` default to `C:/temp/...`. Override via `.env` on Linux/macOS (e.g. `MANIM_SCRIPTS=/tmp/manim_scripts`, `OUTPUTS=/tmp/outputs`).
+- **LTI 1.3 is feature-flagged off by default** (`NIMA_LTI_ENABLED=false`). `id_token` signature verification was added in PR #49, but the integration is still minimal — don't enable in production without an end-to-end test against your LMS.
+- **Standard-mode partial-deliverable semantics** — when the final stitched video trips the aesthetic QA gate (resolution of #19 in PR #23), the pipeline ships the render with `partial=true` and a `final_quality_reason` rather than erroring. Clients that treat `partial=true` as a hard failure will see what looks like a regression; it's actually "here's a usable-but-flagged video."
+- **`GENERATION_MODEL` default (`gpt-5.2-codex`)** may not resolve on stock `api.openai.com`. Override in `.env` to match whatever your provider exposes (e.g. `GENERATION_MODEL=gpt-4o` for vanilla OpenAI).
+- **3Blue1Brown RAG corpus is an opt-in submodule** under `training/3b1b/videos/` (CC BY-NC-SA 4.0). Not populated by default — run `git submodule update --init --recursive` if you want the full retrieval pool. NIMA runs without it. See [`NOTICE`](./NOTICE).
 
 ---
 
@@ -134,7 +148,7 @@ CI note: the repo currently runs local-checks-only (see CONTRIBUTING). `ruff che
 
 [Apache License 2.0](./LICENSE) © 2026 Zhanserik Khozhaniyazov.
 
-The Apache-2.0 grant covers the source code in this repository. Models referenced (OpenAI, Claude, edge-tts voices) and third-party services are governed by their own terms.
+The Apache-2.0 grant covers NIMA's own source code. Vendored third-party content (notably the 3Blue1Brown corpus under `training/3b1b/videos/` and the agentic-coding skill bundles under `skills/`) retains upstream licensing — see [`NOTICE`](./NOTICE) for attribution and terms. External services referenced (OpenAI, Claude, zjuapi, wenwen, edge-tts voices) are governed by their own terms.
 
 ---
 
