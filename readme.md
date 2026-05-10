@@ -154,4 +154,4 @@ The Apache-2.0 grant covers NIMA's own source code. Vendored third-party content
 
 ## Acknowledgements
 
-Built on top of [Manim Community Edition](https://www.manim.community/), [edge-tts](https://github.com/rany2/edge-tts), and the usual suspects (Flask, Next.js, ffmpeg, PyTorch for optional vision adapters).
+Built on top of [Manim Community Edition](https://www.manim.community/), [edge-tts](https://github.com/rany2/edge-tts), and the usual suspects (Flask, Next.js, ffmpeg, Pillow for optional vision adapters).

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability (private)
+    url: https://github.com/khozhaniyazov/nima_model/blob/main/SECURITY.md
+    about: Please email the maintainer directly; do not open a public issue for security reports.
+  - name: Question or discussion
+    url: https://github.com/khozhaniyazov/nima_model/discussions
+    about: For open-ended questions and design discussions, use GitHub Discussions (if enabled) or a blank issue.
