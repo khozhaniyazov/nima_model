@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a new feature, enhancement, or improvement
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Please describe the problem first, not just the solution — that gives maintainers room to propose alternatives.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: What do you want to do that NIMA can't do today (or does awkwardly)?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach (optional)
+      description: If you have a specific API / config / workflow in mind, sketch it here.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds, adjacent tools, or existing NIMA features you tried first.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots, related issues, example prompts — anything that helps.

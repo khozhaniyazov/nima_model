@@ -2,13 +2,14 @@
 # Install: pip install pre-commit && pre-commit install
 # Run on demand: pre-commit run --all-files
 #
-# These hooks mirror what CI enforces, so you find issues before pushing.
+# The repository does not currently run hosted CI — these hooks plus a
+# manual `ruff check .` and `pytest tests/` are the automated gate before
+# review. Bump pins on a release cadence.
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Match the ruff we develop against locally. CI installs unpinned ruff,
-    # so bumping this on a release cadence is fine; the goal is to avoid
-    # pre-commit silently passing on rules CI flags (or vice versa).
+    # Pinned so pre-commit output is reproducible across contributor
+    # machines. Bump alongside ruff config changes in `pyproject.toml`.
     rev: v0.15.6
     hooks:
       - id: ruff

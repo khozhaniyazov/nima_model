@@ -1,5 +1,6 @@
 [tool.ruff]
-# Sources of truth for ruff config — keeps CI and local runs aligned.
+# Single source of truth for ruff config; used by pre-commit, local runs,
+# and any future reinstated CI.
 line-length = 120
 target-version = "py311"
 

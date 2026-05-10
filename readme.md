@@ -137,7 +137,7 @@ CI note: the repo currently runs local-checks-only (see CONTRIBUTING). `ruff che
 ## Known limitations
 
 - **Windows-first defaults** — `MANIM_SCRIPTS` / `OUTPUTS` default to `C:/temp/...`. Override via `.env` on Linux/macOS (e.g. `MANIM_SCRIPTS=/tmp/manim_scripts`, `OUTPUTS=/tmp/outputs`).
-- **LTI 1.3 is feature-flagged off by default** (`NIMA_LTI_ENABLED=false`). `id_token` signature verification was added in PR #49, but the integration is still minimal — don't enable in production without an end-to-end test against your LMS.
+- **LTI 1.3 is feature-flagged off by default** (`NIMA_LTI_ENABLED=false`). The blueprint was gated behind the flag in PR #55 precisely because real `id_token` signature verification (JWKS fetch + `iss`/`aud`/`exp`/nonce enforcement) is not yet implemented — do NOT enable in production.
 - **Standard-mode partial-deliverable semantics** — when the final stitched video trips the aesthetic QA gate (resolution of #19 in PR #23), the pipeline ships the render with `partial=true` and a `final_quality_reason` rather than erroring. Clients that treat `partial=true` as a hard failure will see what looks like a regression; it's actually "here's a usable-but-flagged video."
 - **`GENERATION_MODEL` default (`gpt-5.2-codex`)** may not resolve on stock `api.openai.com`. Override in `.env` to match whatever your provider exposes (e.g. `GENERATION_MODEL=gpt-4o` for vanilla OpenAI).
 - **3Blue1Brown RAG corpus is an opt-in submodule** under `training/3b1b/videos/` (CC BY-NC-SA 4.0). Not populated by default — run `git submodule update --init --recursive` if you want the full retrieval pool. NIMA runs without it. See [`NOTICE`](./NOTICE).
@@ -154,4 +154,4 @@ The Apache-2.0 grant covers NIMA's own source code. Vendored third-party content
 
 ## Acknowledgements
 
-Built on top of [Manim Community Edition](https://www.manim.community/), [edge-tts](https://github.com/rany2/edge-tts), and the usual suspects (Flask, Next.js, ffmpeg, PyTorch for optional vision adapters).
+Built on top of [Manim Community Edition](https://www.manim.community/), [edge-tts](https://github.com/rany2/edge-tts), and the usual suspects (Flask, Next.js, ffmpeg, Pillow for optional vision adapters).
