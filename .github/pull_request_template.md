@@ -18,7 +18,10 @@ Title: use a conventional prefix:
 
 - [ ] `ruff check .` passes locally
 - [ ] `pytest tests/` passes locally
-- [ ] CI is green on this PR
+
+<!-- Note: the repo does not run hosted CI right now. Local `ruff check .` +
+`pytest tests/` are the contract. If either is red, the PR is not ready. -->
+
 
 ## Risk / blast radius
 

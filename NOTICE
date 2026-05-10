@@ -1,0 +1,79 @@
+NIMA — AI Manim Generator
+Copyright 2026 Zhanserik Khozhaniyazov
+
+This product includes software developed by Zhanserik Khozhaniyazov
+and contributors, licensed under the Apache License, Version 2.0
+(see LICENSE).
+
+================================================================================
+Third-party content bundled in this repository
+================================================================================
+
+The following subdirectories contain vendored third-party content that is NOT
+covered by the repository's Apache-2.0 license. Each retains its upstream
+license and terms.
+
+--------------------------------------------------------------------------------
+training/3b1b/videos/   (Git submodule; not populated by default)
+--------------------------------------------------------------------------------
+
+Source:  https://github.com/3b1b/videos
+Author:  Grant Sanderson (3Blue1Brown)
+License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+         (CC BY-NC-SA 4.0)
+         https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+This directory is registered as a git submodule. A fresh clone of NIMA will see
+an empty `training/3b1b/videos/` until the user explicitly runs:
+
+    git submodule update --init --recursive
+
+The snapshot is used as a retrieval corpus of golden Manim examples by the RAG
+layer. NIMA itself does not redistribute the 3Blue1Brown source code;
+initializing the submodule fetches it directly from the upstream repository.
+
+Important: CC BY-NC-SA 4.0 is a non-commercial license. Downstream users who
+initialize this submodule must respect its NonCommercial clause when using or
+redistributing derivative works of the 3Blue1Brown corpus. NIMA's Apache-2.0
+grant applies only to NIMA's own code — not to the 3Blue1Brown material.
+
+--------------------------------------------------------------------------------
+skills/
+--------------------------------------------------------------------------------
+
+The `skills/` directory contains agentic-coding skill bundles (SKILL.md packs
+used by Claude Code / Qwen Code and similar tools). Individual bundles may be
+derived from or inspired by Anthropic's public skills documentation and
+examples.
+
+Per-bundle licensing:
+
+  skills/mcp-builder/                Apache License 2.0 (LICENSE.txt bundled)
+  skills/skill-creator/              Derived from Anthropic examples; use at
+                                     own discretion, consult upstream terms.
+  skills/changelog-generator/        Original to NIMA — Apache-2.0.
+  skills/fastapi/                    Original to NIMA — Apache-2.0.
+  skills/frontend-design/            Derived from Anthropic examples.
+  skills/tailored-resume-generator/  Derived from Anthropic examples.
+  skills/webapp-testing/             Derived from Anthropic examples.
+
+These bundles are not required to run NIMA's generation pipeline. They exist to
+support agentic coding assistants operating on this repository. Consult the
+SKILL.md and any LICENSE files within each bundle for specifics.
+
+--------------------------------------------------------------------------------
+Python dependencies (requirements.txt)
+--------------------------------------------------------------------------------
+
+NIMA imports a number of open-source Python packages at runtime (Flask,
+Manim CE, edge-tts, OpenAI SDK, etc.). Each retains its own license as declared
+in its package metadata. See requirements.txt for the full list; install-time
+license attribution is produced by `pip-licenses` or equivalent tooling.
+
+--------------------------------------------------------------------------------
+Node.js dependencies (nima-frontend/package.json)
+--------------------------------------------------------------------------------
+
+The Next.js frontend under `nima-frontend/` bundles open-source npm packages
+subject to their respective licenses. See `nima-frontend/package.json` and the
+generated `nima-frontend/node_modules/*/LICENSE` files after `npm install`.

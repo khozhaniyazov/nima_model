@@ -1,0 +1,7 @@
+[submodule "training/3b1b/videos"]
+	path = training/3b1b/videos
+	url = https://github.com/3b1b/videos
+	# Pinned at Grant Sanderson's 2017+ corpus snapshot used by the RAG layer.
+	# Users who want the RAG corpus run: git submodule update --init --recursive
+	# Users who only want NIMA's pipeline (no RAG golden examples) can skip it;
+	# the code tolerates a missing/empty videos/ directory at runtime.

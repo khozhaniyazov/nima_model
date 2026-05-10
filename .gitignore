@@ -22,6 +22,9 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.playwright-mcp/
+.qwen/
+database/
 
 # --- Runtime / generated artifacts ---
 outputs/
