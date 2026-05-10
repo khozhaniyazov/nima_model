@@ -81,7 +81,11 @@ from algorithms.video_quality import (
     video_quality_requires_hard_failure,
     video_quality_requires_mode_recovery,
 )
-from RAG.RAG_system import retrieve_golden_example, retrieve_patterns
+# Imported for two reasons: (a) tests monkeypatch `streaming.retrieve_*` to
+# stub RAG retrieval, and (b) `streaming_prompts._retrieve_streaming_rag_context`
+# does a lazy `getattr(_streaming, "retrieve_*", ...)` dispatch to observe
+# those monkeypatches. Both require the names to exist on this module.
+from RAG.RAG_system import retrieve_golden_example, retrieve_patterns  # noqa: F401
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
